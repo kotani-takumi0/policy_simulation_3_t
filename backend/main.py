@@ -52,7 +52,9 @@ app = FastAPI(
 origins = [
     "http://localhost",
     "http://localhost:8080",
+    "http://localhost:5500",
     "http://127.0.0.1:5500", # VSCodeのLive Serverなど
+    "http://0.0.0.0:5500",
     "null" # ローカルのHTMLファイルを開いた場合
 ]
 

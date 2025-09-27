@@ -1,11 +1,32 @@
+import ast  # Pythonの文字列をオブジェクトとして評価するライブラリ
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-import ast # Pythonの文字列をオブジェクトとして評価するライブラリ
 
 # グローバル変数としてデータをキャッシュ
 df = None
 X1_n = None
 X2_n = None
+
+# 候補データファイルを上から順に探索（parquet優先）
+DATA_FILE_CANDIDATES = [
+    Path(__file__).resolve().parent / "final.parquet",
+    Path(__file__).resolve().parent / "data" / "final.parquet",
+    Path(__file__).resolve().parent.parent / "data" / "final.parquet",
+    Path(__file__).resolve().parent / "final_2024.csv",
+    Path(__file__).resolve().parent / "data" / "final_2024.csv",
+    Path(__file__).resolve().parent.parent / "data" / "final_2024.csv",
+]
+
+
+def _resolve_data_path():
+    for candidate in DATA_FILE_CANDIDATES:
+        if candidate.exists():
+            return candidate
+    raise FileNotFoundError(
+        "類似事業データが見つかりません。'final.parquet' もしくは 'final_2024.csv' を配置してください。"
+    )
 
 def to_vec(x):
     """
@@ -53,9 +74,21 @@ def load_data_and_vectors():
         print("データは既にロード済みです。")
         return
 
-    print("参照データ 'final_2024.csv' を読み込んでいます...")
     try:
-        df = pd.read_csv("final_2024.csv")
+        data_path = _resolve_data_path()
+    except FileNotFoundError as exc:
+        print(f"❌ データ読み込み中にエラーが発生しました: {exc}")
+        df = None
+        X1_n = None
+        X2_n = None
+        return
+
+    print(f"参照データ '{data_path.name}' を読み込んでいます...")
+    try:
+        if data_path.suffix == ".parquet":
+            df = pd.read_parquet(data_path)
+        else:
+            df = pd.read_csv(data_path)
         X_1_list = df["embedding_sum"].apply(to_vec).tolist()
         X_2_list = df["embedding_ass"].apply(to_vec).tolist()
 
