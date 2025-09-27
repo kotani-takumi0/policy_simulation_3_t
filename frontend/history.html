@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>分析ログ一覧 | 政策立案支援ツール</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script defer src="history.js"></script>
+</head>
+<body>
+    <header class="header">
+        <div class="header-content">
+            <div class="header-info">
+                <h1 class="app-title">
+                    <i class="fas fa-clipboard-list"></i>
+                    分析ログ一覧
+                </h1>
+                <p class="header-subtitle">庁内で実行した分析結果の履歴を管理します</p>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-secondary" id="backBtn">
+                    <i class="fas fa-arrow-left"></i> 分析画面へ戻る
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="main-content history-page">
+        <div class="history-container">
+            <section class="intro-panel">
+                <h2>ログ管理について</h2>
+                <p>分析実行時に入力内容と検索結果の要点が自動保存されます。不要になったログは削除してください。</p>
+            </section>
+            <section class="card">
+                <h2 class="card-title">
+                    <i class="fas fa-database"></i>
+                    保存済み分析ログ
+                </h2>
+                <div id="historyStatus" class="history-status">読み込み中...</div>
+                <div id="historyList" class="history-list"></div>
+            </section>
+        </div>
+    </main>
+
+    <div class="toast" id="toast"></div>
+</body>
+</html>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>政策立案予算シミュレーションアプリ</title>
+    <title>政策立案支援アプリ</title>
     <link rel="stylesheet" href="styles.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
@@ -11,19 +11,22 @@
     <!-- ヘッダー -->
     <header class="header">
         <div class="header-content">
-            <h1 class="app-title">
-                <i class="fas fa-chart-line"></i>
-                政策立案予算シミュレーション
-            </h1>
+            <div class="header-info">
+                <h1 class="app-title">
+                    <i class="fas fa-chart-line"></i>
+                    政策分析ワークベンチ
+                </h1>
+                <p class="header-subtitle">政策企画部門向け庁内専用ツール（試行版）</p>
+            </div>
             <div class="header-actions">
-                <button class="btn btn-primary" id="newProjectBtn">
-                    <i class="fas fa-plus"></i> 新規作成
+                <button class="btn btn-outline" id="newProjectBtn">
+                    <i class="fas fa-rotate-left"></i> 入力内容を初期化
                 </button>
-                <button class="btn btn-secondary" id="saveBtn">
-                    <i class="fas fa-save"></i> 保存
-                </button>
-                <button class="btn btn-outline" id="exportBtn">
-                    <i class="fas fa-download"></i> データ出力
+                <a class="btn btn-secondary" id="historyBtn" href="history.html">
+                    <i class="fas fa-list"></i> 分析ログ一覧
+                </a>
+                <button class="btn btn-primary" id="exportBtn">
+                    <i class="fas fa-download"></i> JSONで書き出す
                 </button>
             </div>
         </div>
@@ -31,49 +34,14 @@
 
     <!-- メインコンテンツエリア -->
     <main class="main-content">
-        <!-- サマリーKPIエリア -->
-        <section class="summary-kpi-section">
-            <div class="kpi-grid">
-                <div class="kpi-card" id="proposedBudgetCard">
-                    <div class="kpi-icon">
-                        <i class="fas fa-yen-sign"></i>
-                    </div>
-                    <div class="kpi-content">
-                        <h3>提案事業予算</h3>
-                        <p class="kpi-value" id="proposedBudgetValue">¥0</p>
-                    </div>
-                </div>
-                
-                <div class="kpi-card" id="averageBudgetCard">
-                    <div class="kpi-icon">
-                        <i class="fas fa-chart-bar"></i>
-                    </div>
-                    <div class="kpi-content">
-                        <h3>類似事業平均予算</h3>
-                        <p class="kpi-value" id="averageBudgetValue">¥0</p>
-                    </div>
-                </div>
-                
-                <div class="kpi-card" id="budgetComparisonCard">
-                    <div class="kpi-icon">
-                        <i class="fas fa-balance-scale"></i>
-                    </div>
-                    <div class="kpi-content">
-                        <h3>予算比較（過不足）</h3>
-                        <p class="kpi-value" id="budgetComparisonValue">¥0</p>
-                    </div>
-                </div>
-                
-                <div class="kpi-card" id="similarProjectsCard">
-                    <div class="kpi-icon">
-                        <i class="fas fa-project-diagram"></i>
-                    </div>
-                    <div class="kpi-content">
-                        <h3>類似事業件数</h3>
-                        <p class="kpi-value" id="similarProjectsValue">0件</p>
-                    </div>
-                </div>
-            </div>
+        <section class="intro-panel">
+            <h2>ご利用にあたって</h2>
+            <p>入力された事業情報をもとに、過去の類似施策を検索し、検討資料の素案作成を支援します。初回利用時は OpenAI API キーや参照データの配置をご確認ください。</p>
+            <ul>
+                <li>「現状・目的」「事業名」「事業概要」は、内部向けの整理メモとして入力してください。</li>
+                <li>分析結果は右側に表示され、必要に応じて JSON 形式で書き出すことができます。</li>
+                <li>分析ログは自動で保存され、「分析ログ一覧」よりいつでも再確認・削除が可能です。</li>
+            </ul>
         </section>
 
         <!-- 2カラムレイアウト -->
@@ -93,7 +61,7 @@
                                 id="currentSituation" 
                                 name="currentSituation" 
                                 rows="4" 
-                                placeholder="事業が解決しようとしている現状の課題や目的を記述してください..."
+                                placeholder="当該施策が対応しようとしている政策課題・現状を簡潔にご記入ください"
                                 required
                             ></textarea>
                         </div>
@@ -104,7 +72,7 @@
                                 type="text" 
                                 id="projectName" 
                                 name="projectName" 
-                                placeholder="課題解決策としての事業の名称を入力してください"
+                                placeholder="内部管理用の仮称でも構いません"
                                 required
                             >
                         </div>
@@ -115,31 +83,15 @@
                                 id="projectOverview" 
                                 name="projectOverview" 
                                 rows="4" 
-                                placeholder="課題解決策としての具体的な事業内容を記述してください..."
+                                placeholder="実施内容・期待される効果等を箇条書きで整理してください"
                                 required
                             ></textarea>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="initialBudget">当初予算</label>
-                            <div class="budget-input-wrapper">
-                                <span class="currency-symbol">¥</span>
-                                <input 
-                                    type="number" 
-                                    id="initialBudget" 
-                                    name="initialBudget" 
-                                    placeholder="0" 
-                                    min="0" 
-                                    step="1000"
-                                    required
-                                >
-                            </div>
                         </div>
                         
                         <div class="form-actions">
                             <button type="submit" class="btn btn-primary btn-large" id="analyzeBtn">
                                 <i class="fas fa-search"></i>
-                                過去事例と比較分析する
+                                比較分析を実行
                             </button>
                         </div>
                     </form>
@@ -175,13 +127,12 @@
                         </div>
                     </div>
                     
-                    <!-- データ分析レポート -->
+                    <!-- 分析サマリー -->
                     <div class="data-analysis-report">
-                        <h3>データ分析レポート</h3>
+                        <h3>分析サマリー</h3>
                         <div class="report-placeholder">
                             <i class="fas fa-chart-area"></i>
-                            <p>将来的な機能拡張のためのプレースホルダー</p>
-                            <p>類似事業の予算分布や評価の内訳などのグラフ表示を想定</p>
+                            <p>分析を実行すると、入力内容と類似事業のサマリーが表示されます</p>
                         </div>
                     </div>
                 </div>

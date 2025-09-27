@@ -1,22 +1,21 @@
 // アプリケーションのメインクラス
 class PolicyBudgetSimulator {
     constructor() {
-        this.currentProject = null;
+        this.currentInput = null;
         this.similarProjects = [];
+        this.latestAnalysis = null;
         this.currentTab = 'all';
-        // バックエンドAPIのベースURL
         this.apiBaseUrl = 'http://127.0.0.1:8000';
         this.init();
     }
 
-    // 初期化
     init() {
         this.bindEvents();
-        this.updateKPI();
-        this.showToast('アプリケーションを初期化しました', 'info');
+        this.renderProjectsList();
+        this.updateAnalysisSummary();
+        this.showToast('初期化が完了しました', 'info');
     }
 
-    // イベントバインディング
     bindEvents() {
         document.getElementById('projectForm').addEventListener('submit', (e) => {
             e.preventDefault();
@@ -27,17 +26,21 @@ class PolicyBudgetSimulator {
             this.newProject();
         });
 
-        document.getElementById('saveBtn').addEventListener('click', () => {
-            this.saveProject(); // この機能はバックエンド連携により役割が変わります
-        });
+        const historyBtn = document.getElementById('historyBtn');
+        if (historyBtn) {
+            historyBtn.addEventListener('click', () => {
+                this.navigateToHistory();
+            });
+        }
 
         document.getElementById('exportBtn').addEventListener('click', () => {
             this.exportData();
         });
 
-        document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                this.switchTab(e.target.dataset.tab);
+        document.querySelectorAll('.tab-btn').forEach((btn) => {
+            btn.addEventListener('click', (event) => {
+                const target = event.currentTarget;
+                this.switchTab(target.dataset.tab);
             });
         });
 
@@ -45,27 +48,41 @@ class PolicyBudgetSimulator {
             this.closeModal();
         });
 
-        document.getElementById('projectModal').addEventListener('click', (e) => {
-            if (e.target.id === 'projectModal') {
+        document.getElementById('projectModal').addEventListener('click', (event) => {
+            if (event.target.id === 'projectModal') {
                 this.closeModal();
             }
         });
-
-        document.getElementById('initialBudget').addEventListener('input', (e) => {
-            this.updateProposedBudget(e.target.value);
-        });
     }
 
-    // フォーム送信処理 (バックエンドAPI連携)
+    sanitizeHTML(text) {
+        if (typeof text !== 'string') {
+            return '';
+        }
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;',
+        };
+        return text.replace(/[&<>"']/g, (char) => map[char]);
+    }
+
+    formatMultiline(text) {
+        return this.sanitizeHTML(text).replace(/\n/g, '<br>');
+    }
+
     async handleFormSubmit() {
         const form = document.getElementById('projectForm');
         const formData = new FormData(form);
         const projectData = {
-            currentSituation: formData.get('currentSituation'),
-            projectName: formData.get('projectName'),
-            projectOverview: formData.get('projectOverview'),
-            initialBudget: parseInt(formData.get('initialBudget')) || 0
+            currentSituation: (formData.get('currentSituation') || '').trim(),
+            projectName: (formData.get('projectName') || '').trim(),
+            projectOverview: (formData.get('projectOverview') || '').trim(),
         };
+
+        this.currentInput = projectData;
 
         const analyzeBtn = document.getElementById('analyzeBtn');
         analyzeBtn.disabled = true;
@@ -81,22 +98,22 @@ class PolicyBudgetSimulator {
             });
 
             if (!response.ok) {
-                const errorData = await response.json();
+                const errorData = await response.json().catch(() => ({}));
                 throw new Error(`APIエラー: ${errorData.detail || response.statusText}`);
             }
 
             const analysisResult = await response.json();
-            
-            // レスポンスデータを画面に反映
-            this.currentProject = analysisResult;
-            this.similarProjects = analysisResult.references;
-            
+            this.currentInput = analysisResult.request_data || projectData;
+            this.similarProjects = Array.isArray(analysisResult.references) ? analysisResult.references : [];
+            this.latestAnalysis = analysisResult;
+
             this.renderProjectsList();
-            this.updateKPI();
-            this.updateAnalysisReport(analysisResult.result_data); // 分析レポートを更新
+            this.updateAnalysisSummary();
 
-            this.showToast('分析が完了しました', 'success');
-
+            const successMessage = analysisResult.history_id
+                ? `分析を完了し、ログID ${analysisResult.history_id} に保存しました`
+                : '分析が完了しました';
+            this.showToast(successMessage, 'success');
         } catch (error) {
             console.error('分析中にエラーが発生しました:', error);
             this.showToast(error.message, 'error');
@@ -106,11 +123,13 @@ class PolicyBudgetSimulator {
         }
     }
 
-    // プロジェクトリストの表示
     renderProjectsList() {
         const projectsList = document.getElementById('projectsList');
-        
-        if (!this.similarProjects || this.similarProjects.length === 0) {
+        const safeProjects = Array.isArray(this.similarProjects)
+            ? this.similarProjects.filter((item) => item && typeof item === 'object')
+            : [];
+
+        if (safeProjects.length === 0) {
             projectsList.innerHTML = `
                 <div class="empty-state">
                     <i class="fas fa-search"></i>
@@ -120,244 +139,222 @@ class PolicyBudgetSimulator {
             return;
         }
 
-        // バックエンドから取得したデータに合わせて表示を調整
-        projectsList.innerHTML = this.similarProjects.map(project => `
-            <div class="project-item" onclick="app.showProjectModal('${project.project_id}')">
-                <div class="project-header">
-                    <span class="project-name">${project.project_name}</span>
-                    <span class="project-budget">¥${Math.round(project.budget).toLocaleString()}</span>
-                </div>
-                <div class="project-rating">
-                    <span>府省庁: ${project.ministry_name}</span>
-                    <span class="rating-badge rating-b">類似度: ${project.similarity.toFixed(3)}</span>
-                </div>
-            </div>
-        `).join('');
+        projectsList.innerHTML = safeProjects
+            .map((project, index) => {
+                const projectName = this.sanitizeHTML(project.project_name || '名称不明');
+                const ministry = this.sanitizeHTML(project.ministry_name || '所属不明');
+                const similarity = typeof project.similarity === 'number' ? project.similarity.toFixed(3) : '---';
+                const budgetLabel = typeof project.budget === 'number'
+                    ? `¥${Math.round(project.budget).toLocaleString()}`
+                    : '予算情報なし';
+
+                return `
+                    <div class="project-item" data-project-index="${index}">
+                        <div class="project-header">
+                            <span class="project-name">${projectName}</span>
+                            <span class="project-budget">${budgetLabel}</span>
+                        </div>
+                        <div class="project-rating">
+                            <span>府省庁: ${ministry}</span>
+                            <span class="rating-badge rating-b">類似度: ${similarity}</span>
+                        </div>
+                    </div>
+                `;
+            })
+            .join('');
+
+        projectsList.querySelectorAll('.project-item').forEach((item) => {
+            item.addEventListener('click', () => {
+                const index = Number(item.dataset.projectIndex);
+                if (!Number.isNaN(index)) {
+                    this.showProjectModal(index);
+                }
+            });
+        });
     }
 
-    // プロジェクト詳細モーダル表示
-   // プロジェクト詳細モーダル表示
-    showProjectModal(projectId) {
-        const project = this.similarProjects.find(p => p.project_id === projectId);
-        if (!project) return;
+    showProjectModal(identifier) {
+        let project = null;
 
-        // URLが有効な場合にのみリンクとして表示し、無効な場合はテキストとして表示
-        let urlElement = 'リンクなし';
-        if (project.project_url && project.project_url !== 'nan' && project.project_url.startsWith('http')) {
-            urlElement = `<a href="${project.project_url}" target="_blank" rel="noopener noreferrer">${project.project_url}</a>`;
-        } else if (project.project_url && project.project_url !== 'nan') {
-            urlElement = project.project_url;
+        if (typeof identifier === 'number') {
+            project = Array.isArray(this.similarProjects) ? this.similarProjects[identifier] : null;
+        } else {
+            project = Array.isArray(this.similarProjects)
+                ? this.similarProjects.find((p) => p && p.project_id === identifier)
+                : null;
         }
 
-        document.getElementById('modalProjectName').textContent = project.project_name;
-        document.getElementById('modalBody').innerHTML = `
+        if (!project) {
+            return;
+        }
+
+        const budgetLabel = typeof project.budget === 'number'
+            ? `¥${Math.round(project.budget).toLocaleString()}`
+            : '情報なし';
+
+        document.getElementById('modalProjectName').textContent = project.project_name || '事業詳細';
+
+        const urlMarkup = this.createProjectLink(project.project_url);
+        const modalBody = document.getElementById('modalBody');
+        modalBody.innerHTML = `
             <div class="project-details">
-                
                 <div class="detail-row">
                     <strong>事業内容:</strong>
-                    <p>${project.project_overview || '情報なし'}</p>
+                    <p>${this.formatMultiline(project.project_overview || '情報なし')}</p>
                 </div>
                 <div class="detail-row">
-                    <strong>府省庁:</strong> ${project.ministry_name}
+                    <strong>府省庁:</strong> ${this.sanitizeHTML(project.ministry_name || '情報なし')}
                 </div>
                 <div class="detail-row">
-                    <strong>当初予算:</strong> ¥${Math.round(project.budget).toLocaleString()}
+                    <strong>当初予算:</strong> ${budgetLabel}
                 </div>
                 <div class="detail-row">
-                    <strong>類似度:</strong> ${project.similarity.toFixed(4)}
+                    <strong>類似度:</strong> ${typeof project.similarity === 'number' ? project.similarity.toFixed(4) : '---'}
                 </div>
                 <div class="detail-row">
-                    <strong>予算事業ID:</strong> ${project.project_id}
+                    <strong>予算事業ID:</strong> ${this.sanitizeHTML(project.project_id || '---')}
                 </div>
-
                 <div class="detail-row">
                     <strong>関連URL:</strong>
-                    ${urlElement}
+                    ${urlMarkup}
                 </div>
-                </div>
+            </div>
         `;
 
         document.getElementById('projectModal').style.display = 'block';
     }
 
-    // KPI更新
-    updateKPI() {
-        if (!this.currentProject) {
-            this.resetKPI();
+    createProjectLink(url) {
+        if (!url || typeof url !== 'string') {
+            return 'リンクなし';
+        }
+
+        const trimmed = url.trim();
+        if (!trimmed || trimmed.toLowerCase() === 'nan') {
+            return 'リンクなし';
+        }
+
+        const escaped = this.sanitizeHTML(trimmed);
+        if (/^https?:\/\//i.test(trimmed)) {
+            return `<a href="${escaped}" target="_blank" rel="noopener noreferrer">${escaped}</a>`;
+        }
+
+        return escaped;
+    }
+
+    updateAnalysisSummary() {
+        const reportContainer = document.querySelector('.data-analysis-report');
+        if (!reportContainer) {
             return;
         }
 
-        const proposedBudget = this.currentProject.request_data.initialBudget;
-        const estimatedBudget = this.currentProject.result_data.estimated_budget;
-        const budgetComparison = estimatedBudget ? proposedBudget - estimatedBudget : 0;
-        const similarCount = this.similarProjects.length;
+        if (!this.currentInput) {
+            reportContainer.innerHTML = `
+                <h3>分析サマリー</h3>
+                <div class="report-placeholder">
+                    <i class="fas fa-chart-area"></i>
+                    <p>分析を実行すると、入力内容と類似事業のサマリーが表示されます</p>
+                </div>
+            `;
+            return;
+        }
 
-        document.getElementById('proposedBudgetValue').textContent = `¥${proposedBudget.toLocaleString()}`;
-        document.getElementById('averageBudgetValue').textContent = estimatedBudget ? `¥${Math.round(estimatedBudget).toLocaleString()}` : 'N/A';
-        
-        const comparisonElement = document.getElementById('budgetComparisonValue');
-        comparisonElement.textContent = estimatedBudget ? `¥${Math.round(budgetComparison).toLocaleString()}` : 'N/A';
-        
-        const comparisonCard = document.getElementById('budgetComparisonCard');
-        comparisonCard.classList.toggle('warning', budgetComparison < 0);
-        
-        document.getElementById('similarProjectsValue').textContent = `${similarCount}件`;
-    }
-    
-    // データ分析レポートの更新
-    updateAnalysisReport(resultData) {
-        const reportContainer = document.querySelector('.data-analysis-report');
+        const similarCount = this.similarProjects.length;
+        const topProject = this.similarProjects[0];
+        const topProjectName = topProject
+            ? this.sanitizeHTML(topProject.project_name || '情報なし')
+            : '情報なし';
+
         reportContainer.innerHTML = `
-            <h3>データ分析レポート</h3>
+            <h3>分析サマリー</h3>
             <div class="report-content">
                 <div class="detail-row">
-                    <strong>予算評価:</strong>
-                    <p>${resultData.budget_assessment}</p>
+                    <strong>事業名:</strong>
+                    <p>${this.sanitizeHTML(this.currentInput.projectName)}</p>
                 </div>
                 <div class="detail-row">
-                    <strong>評価できる点:</strong>
-                    <ul>
-                        ${resultData.positive_points.map(p => `<li>${p}</li>`).join('')}
-                    </ul>
+                    <strong>現状・目的:</strong>
+                    <p>${this.formatMultiline(this.currentInput.currentSituation)}</p>
                 </div>
                 <div class="detail-row">
-                    <strong>懸念事項:</strong>
-                    <ul>
-                        ${resultData.concerns.map(c => `<li>${c}</li>`).join('')}
-                    </ul>
+                    <strong>事業概要:</strong>
+                    <p>${this.formatMultiline(this.currentInput.projectOverview)}</p>
                 </div>
+                <div class="detail-row">
+                    <strong>類似事業件数:</strong>
+                    <span>${similarCount}件</span>
+                </div>
+                ${topProject ? `<div class="detail-row"><strong>最も類似:</strong><p>${topProjectName}</p></div>` : ''}
             </div>
         `;
     }
-    
-    // モーダルを閉じる
+
     closeModal() {
         document.getElementById('projectModal').style.display = 'none';
     }
 
-    // KPIリセット
-    resetKPI() {
-        document.getElementById('proposedBudgetValue').textContent = '¥0';
-        document.getElementById('averageBudgetValue').textContent = '¥0';
-        document.getElementById('budgetComparisonValue').textContent = '¥0';
-        document.getElementById('similarProjectsValue').textContent = '0件';
-        document.getElementById('budgetComparisonCard').classList.remove('warning');
-        
-        const reportContainer = document.querySelector('.data-analysis-report');
-        reportContainer.innerHTML = `
-            <h3>データ分析レポート</h3>
-            <div class="report-placeholder">
-                <i class="fas fa-chart-area"></i>
-                <p>分析を実行すると、AIによるレポートがここに表示されます</p>
-            </div>
-        `;
-    }
-
-    // 提案予算の更新
-    updateProposedBudget(budget) {
-        if (budget) {
-            document.getElementById('proposedBudgetValue').textContent = `¥${parseInt(budget).toLocaleString()}`;
-        } else {
-            document.getElementById('proposedBudgetValue').textContent = '¥0';
-        }
-    }
-
-    // 新規プロジェクト作成
     newProject() {
         document.getElementById('projectForm').reset();
-        this.currentProject = null;
+        this.currentInput = null;
+        this.latestAnalysis = null;
         this.similarProjects = [];
-        this.resetKPI();
         this.renderProjectsList();
-        this.showToast('新規プロジェクトを作成しました', 'info');
+        this.updateAnalysisSummary();
+        this.closeModal();
+        this.showToast('入力項目を初期化しました', 'info');
     }
 
-    // プロジェクト保存
-    async saveProject() {
-        // まだ分析結果がない場合は、メッセージを出して処理を中断
-        if (!this.currentProject) {
-            this.showToast('分析を実行してから保存してください', 'error');
-            return;
-        }
-        
-        try {
-            // バックエンドの新しい /api/v1/save_analysis 窓口にデータを送信
-            const response = await fetch(`${this.apiBaseUrl}/api/v1/save_analysis`, {
-                method: 'POST', // POSTメソッドで送信
-                headers: {
-                    'Content-Type': 'application/json', // データ形式はJSONです
-                },
-                // this.currentProjectに保存されている分析結果の全データをJSON文字列に変換して送信
-                body: JSON.stringify(this.currentProject),
-            });
-
-            // サーバーからの返信がエラーでないか確認
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(`保存エラー: ${errorData.detail || response.statusText}`);
-            }
-
-            // 成功した場合、サーバーから返されたIDを使って成功メッセージを表示
-            const result = await response.json();
-            this.showToast(`分析結果をID: ${result.id} として保存しました`, 'success');
-
-        } catch (error) {
-            // エラーが発生した場合、コンソールにログを出し、エラーメッセージを表示
-            console.error('保存中にエラーが発生しました:', error);
-            this.showToast(error.message, 'error');
-        }
+    navigateToHistory() {
+        window.location.href = 'history.html';
     }
 
-    // データ出力
     exportData() {
-        if (!this.currentProject) {
-            this.showToast('出力するデータがありません', 'error');
+        if (!this.latestAnalysis) {
+            this.showToast('出力対象の分析がありません', 'error');
             return;
         }
 
         const exportData = {
-            ...this.currentProject,
-            analysisDate: new Date().toISOString()
+            project: this.currentInput,
+            references: this.similarProjects,
+            analysisDate: new Date().toISOString(),
         };
 
         const dataStr = JSON.stringify(exportData, null, 2);
         const dataBlob = new Blob([dataStr], { type: 'application/json' });
-        
         const link = document.createElement('a');
         link.href = URL.createObjectURL(dataBlob);
-        link.download = `policy_budget_analysis_${new Date().toISOString().split('T')[0]}.json`;
+        link.download = `policy_analysis_${new Date().toISOString().split('T')[0]}.json`;
         link.click();
 
-        this.showToast('現在の分析データをJSONで出力しました', 'success');
+        this.showToast('現在の分析内容をJSONで書き出しました', 'success');
     }
 
-    // トーストメッセージ表示
     showToast(message, type = 'info') {
         const toast = document.getElementById('toast');
+        if (!toast) {
+            console.warn('Toastコンテナが見つかりません:', message);
+            return;
+        }
+
         toast.textContent = message;
         toast.className = `toast ${type} show`;
-        
+
         setTimeout(() => {
             toast.classList.remove('show');
         }, 3000);
     }
 
-    // タブ切り替え（現在、評価データがないため機能しないが骨格は残す）
     switchTab(tabName) {
         this.currentTab = tabName;
-        document.querySelectorAll('.tab-btn').forEach(btn => {
+        document.querySelectorAll('.tab-btn').forEach((btn) => {
             btn.classList.toggle('active', btn.dataset.tab === tabName);
         });
-        // this.renderProjectsList(); // 必要に応じてフィルタリング処理を実装
-        this.showToast('タブ切り替え機能は現在ダミーです', 'info');
+        this.showToast('タブ切替機能は現在開発中です', 'info');
     }
 }
 
-// アプリケーションの初期化
-let app;
 document.addEventListener('DOMContentLoaded', () => {
-    app = new PolicyBudgetSimulator();
+    const simulator = new PolicyBudgetSimulator();
+    window.app = simulator;
 });
-
-// グローバル関数として公開（HTMLからの呼び出し用）
-window.app = app;

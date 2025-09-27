@@ -1,12 +1,12 @@
 from fastapi import FastAPI, HTTPException
-from typing import List
 import semantic_search # 分析モジュール
 import numpy as np
 from openai import OpenAI # <- これに変更
 from dotenv import load_dotenv
 import os
-# 既存のimport文の一番下に、以下の5行を追加
-from sqlalchemy import create_engine, Column, Integer, String, Float, Text
+from datetime import datetime
+from typing import Optional, List
+from sqlalchemy import create_engine, Column, Integer, String, Float, Text, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 import json
@@ -29,7 +29,7 @@ Base = declarative_base()
 # --- 保存するデータの「設計図」を定義 ---
 class AnalysisHistory(Base):
     __tablename__ = "history" # データベース内のテーブル名
-    
+
     # テーブルのカラム（列）を定義
     id = Column(Integer, primary_key=True, index=True)
     project_name = Column(String)
@@ -38,13 +38,29 @@ class AnalysisHistory(Base):
     current_situation = Column(Text)
     estimated_budget = Column(Float)
     references = Column(Text) # 類似事業リストはJSON文字列として保存
+    created_at = Column(String)
 
 # 上記の設計図を元に、データベースファイルとテーブルを初回起動時に作成
 Base.metadata.create_all(bind=engine)
 
+
+def ensure_history_schema():
+    """履歴テーブルに必要なカラムが揃っているかを確認し、欠けていれば追加する"""
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("PRAGMA table_info(history);"))
+            columns = {row[1] for row in result}
+            if "created_at" not in columns:
+                conn.execute(text("ALTER TABLE history ADD COLUMN created_at TEXT"))
+    except Exception as exc:
+        print(f"履歴テーブルのスキーマ確認に失敗しました: {exc}")
+
+
+ensure_history_schema()
+
 app = FastAPI(
     title="行政事業分析支援ツール API v2",
-    description="セマンティック検索による予算予測APIです。",
+    description="セマンティック検索による類似事業検索APIです。",
     version="2.0.0"
 )
 
@@ -71,20 +87,59 @@ def startup_event():
     """
     アプリケーション起動時に参照データをメモリにロードする
     """
+    ensure_history_schema()
     semantic_search.load_data_and_vectors()
 
 class AnalysisCreate(BaseModel):
     projectName: str
     projectOverview: str
-    initialBudget: int
     currentSituation: str
+
+
+class AnalysisLogCreate(BaseModel):
+    projectName: str
+    projectOverview: str
+    currentSituation: str
+    references: Optional[List[dict]] = None
+
+
+def store_analysis(
+    project_name: str,
+    project_overview: str,
+    current_situation: str,
+    references: Optional[List[dict]] = None,
+    *,
+    raise_on_error: bool = False
+) -> Optional[int]:
+    """分析結果を履歴テーブルへ保存し、保存されたIDを返す"""
+    db = SessionLocal()
+    try:
+        new_entry = AnalysisHistory(
+            project_name=project_name,
+            project_overview=project_overview,
+            current_situation=current_situation,
+            references=json.dumps(references or [], ensure_ascii=False),
+            created_at=datetime.utcnow().isoformat()
+        )
+        db.add(new_entry)
+        db.commit()
+        db.refresh(new_entry)
+        return new_entry.id
+    except Exception as exc:
+        db.rollback()
+        if raise_on_error:
+            raise exc
+        print(f"履歴保存中にエラーが発生しました: {exc}")
+        return None
+    finally:
+        db.close()
 
 @app.post("/api/v1/analyses")
 def create_analysis(analysis_input: AnalysisCreate):
     """
     新規事業分析を実行します。
     - 入力テキストからEmbeddingベクトルを生成します。
-    - 類似事業をセマンティック検索し、予算を予測します。
+    - 類似事業をセマンティック検索します。
     """
     try:
         # 1. 入力テキストからEmbeddingベクトルを生成 (OpenAI版に変更)
@@ -107,18 +162,21 @@ def create_analysis(analysis_input: AnalysisCreate):
         query_vec_2 = np.array(query_vec_2_list, dtype="float32")
 
         # 2. 分析ロジックを呼び出し
-        analysis_result = semantic_search.analyze_similarity(query_vec_1, query_vec_2)
+        similar_projects = semantic_search.analyze_similarity(query_vec_1, query_vec_2)
 
-        # 3. フロントエンドに返すレスポンスを構築
+        # 3. 自動で履歴に保存
+        history_id = store_analysis(
+            project_name=analysis_input.projectName,
+            project_overview=analysis_input.projectOverview,
+            current_situation=analysis_input.currentSituation,
+            references=similar_projects,
+        )
+
+        # 4. フロントエンドに返すレスポンスを構築
         response_data = {
             "request_data": analysis_input.dict(),
-            "result_data": {
-                "estimated_budget": analysis_result["predicted_budget"],
-                "budget_assessment": "類似事業の予算を基にAIが推定しました。",
-                "positive_points": ["データに基づいた客観的な予算推定です。"],
-                "concerns": ["入力内容と類似する過去事業が少ない場合、精度が低下する可能性があります。"]
-            },
-            "references": analysis_result["similar_projects"]
+            "references": similar_projects,
+            "history_id": history_id
         }
         return response_data
 
@@ -128,29 +186,65 @@ def create_analysis(analysis_input: AnalysisCreate):
     
     # --- フロントからの保存リクエストを受け付ける新しい窓口 ---
 @app.post("/api/v1/save_analysis")
-def save_analysis_to_db(analysis_data: dict):
-    # データベースとのセッションを開始
+def save_analysis_to_db(analysis_data: AnalysisLogCreate):
+    try:
+        history_id = store_analysis(
+            project_name=analysis_data.projectName,
+            project_overview=analysis_data.projectOverview,
+            current_situation=analysis_data.currentSituation,
+            references=analysis_data.references,
+            raise_on_error=True
+        )
+        return {"status": "success", "id": history_id}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/api/v1/history")
+def list_analysis_history(limit: int = 100):
+    """保存された分析履歴を新しい順で返す"""
     db = SessionLocal()
     try:
-        # フロントから送られてきたJSONデータを、データベースの各カラムに割り当てる
-        new_entry = AnalysisHistory(
-            project_name=analysis_data.get("request_data", {}).get("projectName"),
-            project_overview=analysis_data.get("request_data", {}).get("projectOverview"),
-            initial_budget=analysis_data.get("request_data", {}).get("initialBudget"),
-            current_situation=analysis_data.get("request_data", {}).get("currentSituation"),
-            estimated_budget=analysis_data.get("result_data", {}).get("estimated_budget"),
-            references=json.dumps(analysis_data.get("references", [])) # リストは文字列に変換
+        query = (
+            db.query(AnalysisHistory)
+            .order_by(AnalysisHistory.id.desc())
+            .limit(max(limit, 1))
         )
-        # データベースに追加して、変更を確定（保存）
-        db.add(new_entry)
-        db.commit()
-        db.refresh(new_entry)
-        # 成功したことをフロントに伝える
-        return {"status": "success", "id": new_entry.id}
-    except Exception as e:
-        # エラーが起きたら変更を元に戻す
-        db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        records = []
+        for row in query:
+            try:
+                references = json.loads(row.references or "[]")
+            except json.JSONDecodeError:
+                references = []
+            records.append({
+                "id": row.id,
+                "projectName": row.project_name,
+                "projectOverview": row.project_overview,
+                "currentSituation": row.current_situation,
+                "createdAt": row.created_at,
+                "references": references
+            })
+        return records
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
     finally:
-        # セッションを閉じる
+        db.close()
+
+
+@app.delete("/api/v1/history/{history_id}")
+def delete_history_entry(history_id: int):
+    db = SessionLocal()
+    try:
+        entry = db.query(AnalysisHistory).filter(AnalysisHistory.id == history_id).first()
+        if entry is None:
+            raise HTTPException(status_code=404, detail="指定されたログは存在しません")
+        db.delete(entry)
+        db.commit()
+        return {"status": "success"}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))
+    finally:
         db.close()

@@ -54,20 +54,6 @@ def normalize_rows(M):
     n = np.linalg.norm(M, axis=1, keepdims=True) + 1e-12
     return M / n
 
-def softmax_1d(x, tau=0.08):
-    z = x / tau
-    z -= z.max()
-    e = np.exp(z)
-    return e / (e.sum() + 1e-12)
-
-def weighted_log_mean(values, weights):
-    v = np.asarray(values, dtype="float64")
-    w = np.asarray(weights, dtype="float64")
-    mask = v > 0
-    if mask.sum() == 0:
-        return np.nan
-    return float(np.exp((w[mask] * np.log(v[mask])).sum()))
-
 def load_data_and_vectors():
     global df, X1_n, X2_n
     if df is not None:
@@ -106,14 +92,12 @@ def load_data_and_vectors():
         df = None
 
 def analyze_similarity(query_vec_1: np.ndarray, query_vec_2: np.ndarray):
-    """
-    入力ベクトルを基に類似事業の検索と予算予測を行う
-    """
+    """入力ベクトルを基に類似事業の検索を行う"""
     if df is None or X1_n is None or X2_n is None:
         raise Exception("データがロードされていません。'load_data_and_vectors'を先に実行してください。")
 
     # ハイパーパラメータ
-    TOPK, TAU = 5, 0.08
+    TOPK = 5
     ALPHA, BETA = 0.5, 0.5
 
     # クエリベクトルの正規化
@@ -129,47 +113,47 @@ def analyze_similarity(query_vec_1: np.ndarray, query_vec_2: np.ndarray):
     S = ALPHA * S1 + BETA * S2
     scores = S[0]
 
-    # 上位K件のインデックスと類似度を取得
+    if scores.size == 0:
+        return []
+
     K = int(min(TOPK, len(scores)))
     idx = np.argpartition(-scores, K - 1)[:K]
     idx = idx[np.argsort(-scores[idx])]
-    sims = scores[idx]
 
-    # 予算データを取得
-    y_init = df["当初予算"].values.astype(float)
-    init_budget = y_init[idx]
-
-    # 0円以下のデータを除外
-    mask = np.isfinite(init_budget) & (init_budget > 0)
-    if mask.sum() == 0:
-        return {"predicted_budget": None, "similar_projects": []}
-    
-    init_f = init_budget[mask]
-    weights = softmax_1d(sims[mask], tau=TAU)
-    
-    # 予算を予測
-    predicted_budget = weighted_log_mean(init_f, weights)
-    
-    # 類似事業の情報を整形
     similar_projects_info = []
-    top_indices = idx[mask]
-    top_sims = sims[mask]
-    
-    for i, db_index in enumerate(top_indices):
+
+    for db_index in idx:
         row = df.iloc[db_index]
+
+        budget_value = row.get("当初予算", None)
+        if pd.isna(budget_value):
+            budget_value = None
+        else:
+            try:
+                budget_value = float(budget_value)
+            except (TypeError, ValueError):
+                budget_value = None
+
+        overview = row.get("事業の概要", "情報なし")
+        if pd.isna(overview):
+            overview = "情報なし"
+        else:
+            overview = str(overview)
+
+        project_url = row.get("事業概要URL", "")
+        if pd.isna(project_url):
+            project_url = ""
+        else:
+            project_url = str(project_url)
+
         similar_projects_info.append({
-            "project_id": str(row["予算事業ID"]),
-            "project_name": row["事業名"],
-            "ministry_name": row["府省庁"],
-            "budget": float(row["当初予算"]),
-            "similarity": float(top_sims[i]),
-            # ▼▼▼▼▼ ここから2行が追加点 ▼▼▼▼▼
-            "project_overview": str(row.get("事業の概要", "情報なし")), # 事業概要を追加
-            "project_url": str(row.get("事業概要URL", ""))      # 事業概要URLを追加
-            # ▲▲▲▲▲ ここまでが追加点 ▲▲▲▲▲
+            "project_id": str(row.get("予算事業ID", "")),
+            "project_name": row.get("事業名", "") or "",
+            "ministry_name": row.get("府省庁", "") or "",
+            "budget": budget_value,
+            "similarity": float(scores[db_index]),
+            "project_overview": overview,
+            "project_url": project_url
         })
 
-    return {
-        "predicted_budget": predicted_budget,
-        "similar_projects": similar_projects_info
-    }
+    return similar_projects_info
