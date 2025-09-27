@@ -1,0 +1,21 @@
+# Python cache and build artifacts
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+.env/
+
+# Environment variables and secrets
+*.env
+
+# Databases and runtime files
+*.db
+*.sqlite3
+
+# OS metadata
+.DS_Store
+Thumbs.db
