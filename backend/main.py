@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException
-import semantic_search # 分析モジュール
+from . import semantic_search  # 分析モジュール
 import numpy as np
 from openai import OpenAI # <- これに変更
 from dotenv import load_dotenv
@@ -7,7 +7,7 @@ import os
 from datetime import datetime
 from typing import Optional, List
 from sqlalchemy import create_engine, Column, Integer, String, Float, Text, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.ext.declarative import declarative_base
 import json
 
@@ -103,6 +103,14 @@ class AnalysisLogCreate(BaseModel):
     references: Optional[List[dict]] = None
 
 
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
 def store_analysis(
     project_name: str,
     project_overview: str,
@@ -133,6 +141,15 @@ def store_analysis(
         return None
     finally:
         db.close()
+
+
+"""
+以下のユーザー認証関連エンドポイントは一時的に無効化しました:
+ - POST /register
+ - POST /login
+ - GET  /me
+必要になったら、バージョン管理の履歴から復元できます。
+"""
 
 @app.post("/api/v1/analyses")
 def create_analysis(analysis_input: AnalysisCreate):

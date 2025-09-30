@@ -73,6 +73,64 @@ class PolicyBudgetSimulator {
         return this.sanitizeHTML(text).replace(/\n/g, '<br>');
     }
 
+    buildRsSystemUrl(project) {
+        if (!project || typeof project !== 'object') {
+            return null;
+        }
+
+        const rawId = Object.prototype.hasOwnProperty.call(project, 'project_id')
+            ? project.project_id
+            : project.projectId;
+
+        if (rawId === undefined || rawId === null) {
+            return null;
+        }
+
+        const idText = String(rawId).trim();
+        if (!idText || idText.toLowerCase() === 'nan') {
+            return null;
+        }
+
+        return `https://rssystem.go.jp/project?projectNumbers=${encodeURIComponent(idText)}`;
+    }
+
+    enhanceReferences(references) {
+        const missingProjectNames = [];
+        const enhancedProjects = references
+            .filter((item) => item && typeof item === 'object')
+            .map((item) => {
+                const rsSystemUrl = this.buildRsSystemUrl(item);
+                if (!rsSystemUrl) {
+                    const fallbackName = (item && item.project_name) || '名称不明の事業';
+                    missingProjectNames.push(fallbackName);
+                }
+                return {
+                    ...item,
+                    rs_system_url: rsSystemUrl || null,
+                };
+            });
+
+        return {
+            enhancedProjects,
+            missingProjectNames,
+        };
+    }
+
+    notifyMissingProjectIds(projectNames) {
+        if (!Array.isArray(projectNames) || projectNames.length === 0) {
+            return;
+        }
+
+        const uniqueNames = Array.from(new Set(projectNames.filter(Boolean)));
+        const summary = uniqueNames.slice(0, 3).join('、');
+        const suffix = uniqueNames.length > 3 ? ' など' : '';
+        this.showToast(
+            `一部の類似事業に予算事業IDがありませんでした (${summary}${suffix})`,
+            'warning'
+        );
+        console.warn('予算事業IDが確認できない類似事業:', uniqueNames);
+    }
+
     async handleFormSubmit() {
         const form = document.getElementById('projectForm');
         const formData = new FormData(form);
@@ -104,7 +162,10 @@ class PolicyBudgetSimulator {
 
             const analysisResult = await response.json();
             this.currentInput = analysisResult.request_data || projectData;
-            this.similarProjects = Array.isArray(analysisResult.references) ? analysisResult.references : [];
+            const references = Array.isArray(analysisResult.references) ? analysisResult.references : [];
+            const { enhancedProjects, missingProjectNames } = this.enhanceReferences(references);
+            this.similarProjects = enhancedProjects;
+            this.notifyMissingProjectIds(missingProjectNames);
             this.latestAnalysis = analysisResult;
 
             this.renderProjectsList();
@@ -147,6 +208,9 @@ class PolicyBudgetSimulator {
                 const budgetLabel = typeof project.budget === 'number'
                     ? `¥${Math.round(project.budget).toLocaleString()}`
                     : '予算情報なし';
+                const rsSystemLink = project.rs_system_url
+                    ? this.createProjectLink(project.rs_system_url, 'RSシステム')
+                    : '<span class="link-unavailable">RSリンクなし</span>';
 
                 return `
                     <div class="project-item" data-project-index="${index}">
@@ -157,6 +221,9 @@ class PolicyBudgetSimulator {
                         <div class="project-rating">
                             <span>府省庁: ${ministry}</span>
                             <span class="rating-badge rating-b">類似度: ${similarity}</span>
+                        </div>
+                        <div class="project-links">
+                            ${rsSystemLink}
                         </div>
                     </div>
                 `;
@@ -194,7 +261,14 @@ class PolicyBudgetSimulator {
 
         document.getElementById('modalProjectName').textContent = project.project_name || '事業詳細';
 
-        const urlMarkup = this.createProjectLink(project.project_url);
+        const modalLinks = [];
+        if (project.project_url) {
+            modalLinks.push(this.createProjectLink(project.project_url));
+        }
+        if (project.rs_system_url) {
+            modalLinks.push(this.createProjectLink(project.rs_system_url, 'RSシステムで詳細を見る'));
+        }
+        const urlMarkup = modalLinks.length > 0 ? modalLinks.join('<br>') : 'リンクなし';
         const modalBody = document.getElementById('modalBody');
         modalBody.innerHTML = `
             <div class="project-details">
@@ -224,7 +298,7 @@ class PolicyBudgetSimulator {
         document.getElementById('projectModal').style.display = 'block';
     }
 
-    createProjectLink(url) {
+    createProjectLink(url, label = null) {
         if (!url || typeof url !== 'string') {
             return 'リンクなし';
         }
@@ -235,11 +309,12 @@ class PolicyBudgetSimulator {
         }
 
         const escaped = this.sanitizeHTML(trimmed);
+        const linkText = label !== null ? this.sanitizeHTML(label) : escaped;
         if (/^https?:\/\//i.test(trimmed)) {
-            return `<a href="${escaped}" target="_blank" rel="noopener noreferrer">${escaped}</a>`;
+            return `<a href="${escaped}" target="_blank" rel="noopener noreferrer">${linkText}</a>`;
         }
 
-        return escaped;
+        return label !== null ? linkText : escaped;
     }
 
     updateAnalysisSummary() {
@@ -355,6 +430,7 @@ class PolicyBudgetSimulator {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    console.info('PolicyBudgetSimulator initialized (v2)');
     const simulator = new PolicyBudgetSimulator();
     window.app = simulator;
 });

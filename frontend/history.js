@@ -124,6 +124,10 @@ class HistoryPage {
                 const ministry = this.sanitize(ref.ministry_name || '所属不明');
                 const similarity = typeof ref.similarity === 'number' ? ref.similarity.toFixed(3) : '---';
                 const url = this.createLink(ref.project_url);
+                const rsSystemUrl = this.buildRsSystemUrl(ref);
+                const rsLink = rsSystemUrl
+                    ? this.createLink(rsSystemUrl, 'RSシステム')
+                    : '<span class="link-unavailable">RSリンクなし</span>';
                 return `
                     <li>
                         <div class="reference-header">
@@ -133,6 +137,7 @@ class HistoryPage {
                         <div class="reference-body">
                             <span>府省庁: ${ministry}</span>
                             <span>URL: ${url}</span>
+                            <span>RS: ${rsLink}</span>
                         </div>
                     </li>
                 `;
@@ -201,7 +206,28 @@ class HistoryPage {
             `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
     }
 
-    createLink(url) {
+    buildRsSystemUrl(project) {
+        if (!project || typeof project !== 'object') {
+            return null;
+        }
+
+        const rawId = Object.prototype.hasOwnProperty.call(project, 'project_id')
+            ? project.project_id
+            : project.projectId;
+
+        if (rawId === undefined || rawId === null) {
+            return null;
+        }
+
+        const idText = String(rawId).trim();
+        if (!idText || idText.toLowerCase() === 'nan') {
+            return null;
+        }
+
+        return `https://rssystem.go.jp/project?projectNumbers=${encodeURIComponent(idText)}`;
+    }
+
+    createLink(url, label = null) {
         if (!url || typeof url !== 'string') {
             return 'リンクなし';
         }
@@ -210,10 +236,11 @@ class HistoryPage {
             return 'リンクなし';
         }
         const escaped = this.sanitize(trimmed);
+        const linkText = label !== null ? this.sanitize(label) : escaped;
         if (/^https?:\/\//i.test(trimmed)) {
-            return `<a href="${escaped}" target="_blank" rel="noopener noreferrer">${escaped}</a>`;
+            return `<a href="${escaped}" target="_blank" rel="noopener noreferrer">${linkText}</a>`;
         }
-        return escaped;
+        return label !== null ? linkText : escaped;
     }
 
     showToast(message, type = 'info') {
