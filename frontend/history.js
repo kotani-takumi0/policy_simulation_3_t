@@ -116,6 +116,8 @@ class HistoryPage {
         const createdAt = this.formatDate(item.createdAt);
         const currentSituation = this.formatMultiline(item.currentSituation || '---');
         const projectOverview = this.formatMultiline(item.projectOverview || '---');
+        const initialBudget = this.formatCurrency(item.initialBudget);
+        const estimatedBudget = this.formatCurrency(item.estimatedBudget);
         const references = Array.isArray(item.references) ? item.references : [];
         const referenceCount = references.length;
         const referenceList = references
@@ -159,6 +161,14 @@ class HistoryPage {
                     </div>
                 </div>
                 <div class="history-card-body">
+                    <div class="detail-row">
+                        <strong>入力当初予算:</strong>
+                        <p>${initialBudget}</p>
+                    </div>
+                    <div class="detail-row">
+                        <strong>推定予算:</strong>
+                        <p>${estimatedBudget}</p>
+                    </div>
                     <div class="detail-row">
                         <strong>現状・目的:</strong>
                         <p>${currentSituation}</p>
@@ -204,6 +214,13 @@ class HistoryPage {
         }
         return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ` +
             `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+    }
+
+    formatCurrency(value) {
+        if (typeof value !== 'number' || !Number.isFinite(value)) {
+            return '---';
+        }
+        return `¥${Math.round(value).toLocaleString('ja-JP')}`;
     }
 
     buildRsSystemUrl(project) {

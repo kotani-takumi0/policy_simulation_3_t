@@ -6,6 +6,9 @@ class PolicyBudgetSimulator {
         this.latestAnalysis = null;
         this.currentTab = 'all';
         this.apiBaseUrl = 'http://127.0.0.1:8000';
+        this.budgetInsights = null;
+        this.serverEstimatedBudget = null;
+        this.proposedBudget = null;
         this.init();
     }
 
@@ -13,6 +16,7 @@ class PolicyBudgetSimulator {
         this.bindEvents();
         this.renderProjectsList();
         this.updateAnalysisSummary();
+        this.updateKpiSection();
         this.showToast('初期化が完了しました', 'info');
     }
 
@@ -36,6 +40,13 @@ class PolicyBudgetSimulator {
         document.getElementById('exportBtn').addEventListener('click', () => {
             this.exportData();
         });
+
+        const saveBtn = document.getElementById('saveBtn');
+        if (saveBtn) {
+            saveBtn.addEventListener('click', () => {
+                this.saveAnalysis();
+            });
+        }
 
         document.querySelectorAll('.tab-btn').forEach((btn) => {
             btn.addEventListener('click', (event) => {
@@ -71,6 +82,19 @@ class PolicyBudgetSimulator {
 
     formatMultiline(text) {
         return this.sanitizeHTML(text).replace(/\n/g, '<br>');
+    }
+
+    formatCurrency(value, { signed = false } = {}) {
+        if (typeof value !== 'number' || !Number.isFinite(value)) {
+            return '--';
+        }
+        const rounded = Math.round(value);
+        const formatted = `¥${rounded.toLocaleString('ja-JP')}`;
+        if (!signed) {
+            return formatted;
+        }
+        const sign = rounded > 0 ? '+' : '';
+        return `${sign}${formatted}`;
     }
 
     buildRsSystemUrl(project) {
@@ -139,6 +163,18 @@ class PolicyBudgetSimulator {
             projectName: (formData.get('projectName') || '').trim(),
             projectOverview: (formData.get('projectOverview') || '').trim(),
         };
+        const rawInitialBudget = formData.get('initialBudget');
+        const parsedInitialBudget =
+            rawInitialBudget !== null && rawInitialBudget !== ''
+                ? Number(rawInitialBudget)
+                : null;
+        if (Number.isFinite(parsedInitialBudget) && parsedInitialBudget >= 0) {
+            projectData.initialBudget = parsedInitialBudget;
+            this.proposedBudget = parsedInitialBudget;
+        } else {
+            projectData.initialBudget = null;
+            this.proposedBudget = null;
+        }
 
         this.currentInput = projectData;
 
@@ -162,14 +198,33 @@ class PolicyBudgetSimulator {
 
             const analysisResult = await response.json();
             this.currentInput = analysisResult.request_data || projectData;
+            this.proposedBudget =
+                typeof this.currentInput.initialBudget === 'number' &&
+                Number.isFinite(this.currentInput.initialBudget)
+                    ? this.currentInput.initialBudget
+                    : null;
+            if (
+                this.proposedBudget === null &&
+                typeof analysisResult.initial_budget === 'number' &&
+                Number.isFinite(analysisResult.initial_budget)
+            ) {
+                this.proposedBudget = analysisResult.initial_budget;
+            }
             const references = Array.isArray(analysisResult.references) ? analysisResult.references : [];
             const { enhancedProjects, missingProjectNames } = this.enhanceReferences(references);
             this.similarProjects = enhancedProjects;
             this.notifyMissingProjectIds(missingProjectNames);
             this.latestAnalysis = analysisResult;
+            this.serverEstimatedBudget =
+                typeof analysisResult.estimated_budget === 'number' &&
+                Number.isFinite(analysisResult.estimated_budget)
+                    ? analysisResult.estimated_budget
+                    : null;
+            this.budgetInsights = this.calculateBudgetInsights(this.serverEstimatedBudget);
 
             this.renderProjectsList();
             this.updateAnalysisSummary();
+            this.updateKpiSection();
 
             const successMessage = analysisResult.history_id
                 ? `分析を完了し、ログID ${analysisResult.history_id} に保存しました`
@@ -178,9 +233,12 @@ class PolicyBudgetSimulator {
         } catch (error) {
             console.error('分析中にエラーが発生しました:', error);
             this.showToast(error.message, 'error');
+            this.serverEstimatedBudget = null;
+            this.budgetInsights = this.calculateBudgetInsights();
+            this.updateKpiSection();
         } finally {
             analyzeBtn.disabled = false;
-            analyzeBtn.innerHTML = '<i class="fas fa-search"></i> 過去事例と比較分析する';
+            analyzeBtn.innerHTML = '<i class="fas fa-search"></i> 比較分析を実行';
         }
     }
 
@@ -238,6 +296,136 @@ class PolicyBudgetSimulator {
                 }
             });
         });
+    }
+
+    calculateBudgetInsights(serverEstimate = null) {
+        const validProjects = Array.isArray(this.similarProjects)
+            ? this.similarProjects.filter(
+                  (project) =>
+                      project &&
+                      typeof project.budget === 'number' &&
+                      Number.isFinite(project.budget)
+            )
+            : [];
+        const totalProjects = Array.isArray(this.similarProjects)
+            ? this.similarProjects.length
+            : 0;
+        const normalizedServerEstimate =
+            typeof serverEstimate === 'number' && Number.isFinite(serverEstimate)
+                ? serverEstimate
+                : null;
+
+        if (validProjects.length === 0) {
+            if (normalizedServerEstimate === null) {
+                return null;
+            }
+            return {
+                estimate: normalizedServerEstimate,
+                fallbackEstimate: null,
+                useServerEstimate: true,
+                averageBudget: null,
+                median: null,
+                min: null,
+                max: null,
+                sampleCount: 0,
+                missingCount: Math.max(totalProjects, 0),
+                usedWeights: false,
+            };
+        }
+
+        const budgets = validProjects.map((project) => project.budget);
+        const sortedBudgets = [...budgets].sort((a, b) => a - b);
+        const totalItems = budgets.length;
+        const weightCandidates = validProjects
+            .map((project) =>
+                typeof project.similarity === 'number' && project.similarity > 0
+                    ? project.similarity
+                    : 0
+            )
+            .filter((weight) => weight > 0);
+        const weightSum = weightCandidates.reduce((sum, weight) => sum + weight, 0);
+        const arithmeticMean =
+            totalItems > 0 ? budgets.reduce((sum, budget) => sum + budget, 0) / totalItems : null;
+
+        const weightedEstimate =
+            weightSum > 0
+                ? validProjects.reduce((sum, project) => {
+                      const weight =
+                          typeof project.similarity === 'number' && project.similarity > 0
+                              ? project.similarity
+                              : 0;
+                      return sum + project.budget * weight;
+                  }, 0) / weightSum
+                : arithmeticMean;
+
+        const medianIndex = Math.floor(sortedBudgets.length / 2);
+        const medianValue =
+            sortedBudgets.length % 2 === 0
+                ? (sortedBudgets[medianIndex - 1] + sortedBudgets[medianIndex]) / 2
+                : sortedBudgets[medianIndex];
+
+        const finalEstimate = normalizedServerEstimate ?? weightedEstimate;
+
+        return {
+            estimate: Number.isFinite(finalEstimate) ? finalEstimate : null,
+            fallbackEstimate: Number.isFinite(weightedEstimate) ? weightedEstimate : null,
+            useServerEstimate: normalizedServerEstimate !== null,
+            averageBudget: Number.isFinite(arithmeticMean) ? arithmeticMean : null,
+            median: medianValue,
+            min: sortedBudgets[0],
+            max: sortedBudgets[sortedBudgets.length - 1],
+            sampleCount: totalItems,
+            missingCount: Math.max(totalProjects - totalItems, 0),
+            usedWeights: weightSum > 0,
+        };
+    }
+
+    updateKpiSection() {
+        const proposedEl = document.getElementById('proposedBudgetValue');
+        const averageEl = document.getElementById('averageBudgetValue');
+        const comparisonEl = document.getElementById('budgetComparisonValue');
+        const countEl = document.getElementById('similarProjectsValue');
+        const comparisonCard = document.getElementById('budgetComparisonCard');
+
+        if (!proposedEl || !averageEl || !comparisonEl || !countEl || !comparisonCard) {
+            return;
+        }
+
+        const proposedValue =
+            typeof this.proposedBudget === 'number' && Number.isFinite(this.proposedBudget)
+                ? this.proposedBudget
+                : null;
+        proposedEl.textContent = proposedValue !== null ? this.formatCurrency(proposedValue) : '¥0';
+
+        const estimateValue = this.budgetInsights
+            ? this.budgetInsights.estimate ?? this.budgetInsights.fallbackEstimate
+            : null;
+        const averageValue =
+            this.budgetInsights && this.budgetInsights.averageBudget !== null
+                ? this.budgetInsights.averageBudget
+                : estimateValue;
+
+        averageEl.textContent =
+            averageValue !== null ? this.formatCurrency(averageValue) : '--';
+
+        let diffValue = null;
+        if (proposedValue !== null && estimateValue !== null) {
+            diffValue = proposedValue - estimateValue;
+            comparisonEl.textContent = this.formatCurrency(diffValue, { signed: true });
+        } else {
+            comparisonEl.textContent = '--';
+        }
+
+        if (diffValue !== null && diffValue > 0) {
+            comparisonCard.classList.add('warning');
+        } else {
+            comparisonCard.classList.remove('warning');
+        }
+
+        const projectCount = Array.isArray(this.similarProjects)
+            ? this.similarProjects.length
+            : 0;
+        countEl.textContent = `${projectCount}件`;
     }
 
     showProjectModal(identifier) {
@@ -318,49 +506,66 @@ class PolicyBudgetSimulator {
     }
 
     updateAnalysisSummary() {
-        const reportContainer = document.querySelector('.data-analysis-report');
-        if (!reportContainer) {
+        const summaryContainer = document.getElementById('analysisSummary');
+        if (!summaryContainer) {
             return;
         }
 
         if (!this.currentInput) {
-            reportContainer.innerHTML = `
-                <h3>分析サマリー</h3>
-                <div class="report-placeholder">
-                    <i class="fas fa-chart-area"></i>
-                    <p>分析を実行すると、入力内容と類似事業のサマリーが表示されます</p>
-                </div>
+            summaryContainer.classList.add('report-placeholder');
+            summaryContainer.innerHTML = `
+                <i class="fas fa-chart-area"></i>
+                <p>分析を実行すると、入力内容と類似事業のサマリーが表示されます</p>
             `;
             return;
         }
 
-        const similarCount = this.similarProjects.length;
-        const topProject = this.similarProjects[0];
+        summaryContainer.classList.remove('report-placeholder');
+
+        const similarCount = Array.isArray(this.similarProjects)
+            ? this.similarProjects.length
+            : 0;
+        const topProject =
+            Array.isArray(this.similarProjects) && this.similarProjects.length > 0
+                ? this.similarProjects[0]
+                : null;
         const topProjectName = topProject
             ? this.sanitizeHTML(topProject.project_name || '情報なし')
             : '情報なし';
+        const estimatedValue = this.budgetInsights
+            ? this.budgetInsights.estimate ?? this.budgetInsights.fallbackEstimate
+            : null;
+        const proposedValue =
+            typeof this.proposedBudget === 'number' && Number.isFinite(this.proposedBudget)
+                ? this.proposedBudget
+                : null;
 
-        reportContainer.innerHTML = `
-            <h3>分析サマリー</h3>
-            <div class="report-content">
-                <div class="detail-row">
-                    <strong>事業名:</strong>
-                    <p>${this.sanitizeHTML(this.currentInput.projectName)}</p>
-                </div>
-                <div class="detail-row">
-                    <strong>現状・目的:</strong>
-                    <p>${this.formatMultiline(this.currentInput.currentSituation)}</p>
-                </div>
-                <div class="detail-row">
-                    <strong>事業概要:</strong>
-                    <p>${this.formatMultiline(this.currentInput.projectOverview)}</p>
-                </div>
-                <div class="detail-row">
-                    <strong>類似事業件数:</strong>
-                    <span>${similarCount}件</span>
-                </div>
-                ${topProject ? `<div class="detail-row"><strong>最も類似:</strong><p>${topProjectName}</p></div>` : ''}
+        summaryContainer.innerHTML = `
+            <div class="detail-row">
+                <strong>事業名:</strong>
+                <p>${this.sanitizeHTML(this.currentInput.projectName)}</p>
             </div>
+            <div class="detail-row">
+                <strong>現状・目的:</strong>
+                <p>${this.formatMultiline(this.currentInput.currentSituation)}</p>
+            </div>
+            <div class="detail-row">
+                <strong>事業概要:</strong>
+                <p>${this.formatMultiline(this.currentInput.projectOverview)}</p>
+            </div>
+            <div class="detail-row">
+                <strong>入力された当初予算:</strong>
+                <p>${this.formatCurrency(proposedValue)}</p>
+            </div>
+            <div class="detail-row">
+                <strong>推定予算:</strong>
+                <p>${this.formatCurrency(estimatedValue)}</p>
+            </div>
+            <div class="detail-row">
+                <strong>類似事業件数:</strong>
+                <p>${similarCount}件</p>
+            </div>
+            ${topProject ? `<div class="detail-row"><strong>最も類似:</strong><p>${topProjectName}</p></div>` : ''}
         `;
     }
 
@@ -373,8 +578,12 @@ class PolicyBudgetSimulator {
         this.currentInput = null;
         this.latestAnalysis = null;
         this.similarProjects = [];
+        this.budgetInsights = null;
+        this.serverEstimatedBudget = null;
+        this.proposedBudget = null;
         this.renderProjectsList();
         this.updateAnalysisSummary();
+        this.updateKpiSection();
         this.closeModal();
         this.showToast('入力項目を初期化しました', 'info');
     }
@@ -392,6 +601,7 @@ class PolicyBudgetSimulator {
         const exportData = {
             project: this.currentInput,
             references: this.similarProjects,
+            estimatedBudget: this.serverEstimatedBudget ?? (this.budgetInsights?.estimate ?? null),
             analysisDate: new Date().toISOString(),
         };
 
@@ -418,6 +628,50 @@ class PolicyBudgetSimulator {
         setTimeout(() => {
             toast.classList.remove('show');
         }, 3000);
+    }
+
+    async saveAnalysis() {
+        if (!this.currentInput || !Array.isArray(this.similarProjects)) {
+            this.showToast('保存できる分析がありません', 'error');
+            return;
+        }
+
+        const payload = {
+            projectName: this.currentInput.projectName || '',
+            projectOverview: this.currentInput.projectOverview || '',
+            currentSituation: this.currentInput.currentSituation || '',
+            initialBudget:
+                typeof this.proposedBudget === 'number' && Number.isFinite(this.proposedBudget)
+                    ? this.proposedBudget
+                    : null,
+            references: this.similarProjects,
+            estimatedBudget:
+                this.serverEstimatedBudget ??
+                (this.budgetInsights && this.budgetInsights.estimate !== null
+                    ? this.budgetInsights.estimate
+                    : null),
+        };
+
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/api/v1/save_analysis`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.detail || response.statusText);
+            }
+
+            const result = await response.json();
+            this.showToast(`分析を保存しました (ID: ${result.id})`, 'success');
+        } catch (error) {
+            console.error('保存処理でエラーが発生しました:', error);
+            this.showToast(error.message || '分析の保存に失敗しました', 'error');
+        }
     }
 
     switchTab(tabName) {

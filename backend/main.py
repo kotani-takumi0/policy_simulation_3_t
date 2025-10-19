@@ -1,5 +1,11 @@
 from fastapi import FastAPI, HTTPException
-from . import semantic_search  # 分析モジュール
+# パッケージ実行時とスクリプト実行時の両方に対応
+try:
+    # パッケージとしてインポートされた場合（uvicorn backend.main:app など）
+    from . import semantic_search  # 分析モジュール
+except ImportError:
+    # 単体モジュールとして実行された場合（uvicorn main:app を backend ディレクトリで実行など）
+    import semantic_search  # type: ignore
 import numpy as np
 from openai import OpenAI # <- これに変更
 from dotenv import load_dotenv
@@ -52,6 +58,10 @@ def ensure_history_schema():
             columns = {row[1] for row in result}
             if "created_at" not in columns:
                 conn.execute(text("ALTER TABLE history ADD COLUMN created_at TEXT"))
+            if "estimated_budget" not in columns:
+                conn.execute(text("ALTER TABLE history ADD COLUMN estimated_budget REAL"))
+            if "initial_budget" not in columns:
+                conn.execute(text("ALTER TABLE history ADD COLUMN initial_budget INTEGER"))
     except Exception as exc:
         print(f"履歴テーブルのスキーマ確認に失敗しました: {exc}")
 
@@ -94,13 +104,16 @@ class AnalysisCreate(BaseModel):
     projectName: str
     projectOverview: str
     currentSituation: str
+    initialBudget: Optional[float] = None
 
 
 class AnalysisLogCreate(BaseModel):
     projectName: str
     projectOverview: str
     currentSituation: str
+    initialBudget: Optional[float] = None
     references: Optional[List[dict]] = None
+    estimatedBudget: Optional[float] = None
 
 
 def get_db():
@@ -115,7 +128,9 @@ def store_analysis(
     project_name: str,
     project_overview: str,
     current_situation: str,
+    initial_budget: Optional[float] = None,
     references: Optional[List[dict]] = None,
+    estimated_budget: Optional[float] = None,
     *,
     raise_on_error: bool = False
 ) -> Optional[int]:
@@ -126,6 +141,8 @@ def store_analysis(
             project_name=project_name,
             project_overview=project_overview,
             current_situation=current_situation,
+            initial_budget=int(initial_budget) if isinstance(initial_budget, (int, float)) and np.isfinite(initial_budget) else None,
+            estimated_budget=estimated_budget,
             references=json.dumps(references or [], ensure_ascii=False),
             created_at=datetime.utcnow().isoformat()
         )
@@ -179,20 +196,27 @@ def create_analysis(analysis_input: AnalysisCreate):
         query_vec_2 = np.array(query_vec_2_list, dtype="float32")
 
         # 2. 分析ロジックを呼び出し
-        similar_projects = semantic_search.analyze_similarity(query_vec_1, query_vec_2)
+        analysis_output = semantic_search.analyze_similarity(query_vec_1, query_vec_2)
+        similar_projects = analysis_output.get("similar_projects", [])
+        estimated_budget = analysis_output.get("predicted_budget")
+        initial_budget = analysis_input.initialBudget
 
         # 3. 自動で履歴に保存
         history_id = store_analysis(
             project_name=analysis_input.projectName,
             project_overview=analysis_input.projectOverview,
             current_situation=analysis_input.currentSituation,
+            initial_budget=initial_budget,
             references=similar_projects,
+            estimated_budget=estimated_budget,
         )
 
         # 4. フロントエンドに返すレスポンスを構築
         response_data = {
             "request_data": analysis_input.dict(),
             "references": similar_projects,
+            "estimated_budget": estimated_budget,
+            "initial_budget": initial_budget,
             "history_id": history_id
         }
         return response_data
@@ -209,7 +233,9 @@ def save_analysis_to_db(analysis_data: AnalysisLogCreate):
             project_name=analysis_data.projectName,
             project_overview=analysis_data.projectOverview,
             current_situation=analysis_data.currentSituation,
+            initial_budget=analysis_data.initialBudget,
             references=analysis_data.references,
+            estimated_budget=analysis_data.estimatedBudget,
             raise_on_error=True
         )
         return {"status": "success", "id": history_id}
@@ -238,6 +264,8 @@ def list_analysis_history(limit: int = 100):
                 "projectName": row.project_name,
                 "projectOverview": row.project_overview,
                 "currentSituation": row.current_situation,
+                "initialBudget": row.initial_budget,
+                "estimatedBudget": row.estimated_budget,
                 "createdAt": row.created_at,
                 "references": references
             })
