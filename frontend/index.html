@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>政策立案予算シミュレーションアプリ</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=20241022">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -191,6 +191,135 @@
                 </div>
             </section>
         </div>
+
+        <section class="card option-detail-card" id="optionDetailSection" style="display:none;">
+            <h2 class="card-title">
+                <i class="fas fa-lightbulb"></i>
+                案の検討状況
+            </h2>
+
+            <div class="option-detail-header">
+                <div>
+                    <h3 id="optionDetailTitle">案が保存されていません</h3>
+                    <p id="optionDetailSummary" class="muted">分析を保存すると、ここに案の概要と作業状況が表示されます。</p>
+                </div>
+                <dl class="option-meta">
+                    <div>
+                        <dt>最新バージョン</dt>
+                        <dd id="optionVersionLabel">v1</dd>
+                    </div>
+                    <div>
+                        <dt>作成日時</dt>
+                        <dd id="optionCreatedAt">--</dd>
+                    </div>
+                    <div>
+                        <dt>最終更新</dt>
+                        <dd id="optionUpdatedAt">--</dd>
+                    </div>
+                </dl>
+            </div>
+
+            <div class="option-detail-grid">
+                <div class="option-column">
+                    <div class="option-panel option-status-panel">
+                        <div class="option-panel-header">
+                            <h3>現在のステータス</h3>
+                            <span id="optionStatusLabel" class="status-badge status-draft">未保存</span>
+                        </div>
+                        <p class="muted">承認フローに応じて状態を更新できます。状態が変わるたびに履歴が残ります。</p>
+                        <div class="status-actions">
+                            <button class="btn btn-outline" data-transition="in_review" id="requestReviewBtn">
+                                <i class="fas fa-paper-plane"></i> レビュー依頼
+                            </button>
+                            <button class="btn btn-success" data-transition="approved" id="approveBtn">
+                                <i class="fas fa-check"></i> 承認
+                            </button>
+                            <button class="btn btn-warning" data-transition="draft" id="requestChangesBtn">
+                                <i class="fas fa-undo"></i> 差戻
+                            </button>
+                            <button class="btn btn-primary" data-transition="published" id="publishBtn">
+                                <i class="fas fa-bullhorn"></i> 公開
+                            </button>
+                            <button class="btn btn-secondary" data-transition="archived" id="archiveBtn">
+                                <i class="fas fa-archive"></i> アーカイブ
+                            </button>
+                        </div>
+                        <div class="workflow-history">
+                            <h4><i class="fas fa-history"></i> ステータス遷移履歴</h4>
+                            <ul id="workflowHistoryList" class="timeline-list"></ul>
+                        </div>
+                    </div>
+
+                    <div class="option-panel option-evidence-panel">
+                        <div class="option-panel-header">
+                            <h3>根拠情報</h3>
+                            <span class="muted">提案を裏付ける資料・出典を登録できます</span>
+                        </div>
+                        <form id="evidenceForm" class="stacked-form">
+                            <label for="evidenceUrl">出典URL</label>
+                            <input type="url" id="evidenceUrl" placeholder="https://example.com/report" />
+                            <label for="evidenceSnippet">抜粋・要旨</label>
+                            <textarea id="evidenceSnippet" rows="3" placeholder="レポートから引用する箇所を記載"></textarea>
+                            <label for="evidenceNote">メモ</label>
+                            <textarea id="evidenceNote" rows="2" placeholder="補足事項があれば記載"></textarea>
+                            <button type="submit" class="btn btn-outline">
+                                <i class="fas fa-paperclip"></i> 根拠を追加
+                            </button>
+                        </form>
+                        <ul id="evidenceList" class="evidence-list"></ul>
+                    </div>
+                </div>
+
+                <div class="option-column">
+                    <div class="option-panel option-review-panel">
+                        <div class="option-panel-header">
+                            <h3>レビュー</h3>
+                            <span class="muted">レビュワーからのコメントや承認履歴を記録します</span>
+                        </div>
+                        <form id="reviewForm" class="stacked-form">
+                            <label for="reviewOutcome">レビュー結果</label>
+                            <select id="reviewOutcome" name="reviewOutcome">
+                                <option value="comment">コメント</option>
+                                <option value="approve">承認</option>
+                                <option value="request_changes">差戻</option>
+                            </select>
+                            <label for="reviewComment">コメント</label>
+                            <textarea id="reviewComment" name="reviewComment" rows="3" placeholder="レビューメモを入力"></textarea>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-comment-dots"></i> レビューを登録
+                            </button>
+                        </form>
+                        <div class="review-history">
+                            <h4><i class="fas fa-comments"></i> コメント履歴</h4>
+                            <ul id="reviewHistoryList" class="timeline-list"></ul>
+                        </div>
+                    </div>
+
+                    <div class="option-panel option-assessment-panel">
+                        <div class="option-panel-header">
+                            <h3>評価項目</h3>
+                            <span class="muted">検討基準とスコアを整理できます</span>
+                        </div>
+                        <form id="criterionForm" class="stacked-form inline">
+                            <div class="form-row">
+                                <div class="form-field">
+                                    <label for="criterionName">評価基準</label>
+                                    <input type="text" id="criterionName" placeholder="例: 実現可能性" />
+                                </div>
+                                <div class="form-field narrow">
+                                    <label for="criterionWeight">重み (0〜1)</label>
+                                    <input type="number" id="criterionWeight" step="0.1" min="0" max="1" />
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-outline">
+                                <i class="fas fa-plus"></i> 評価基準を追加
+                            </button>
+                        </form>
+                        <div id="assessmentList" class="assessment-list"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
     </main>
 
     <!-- プロジェクト詳細モーダル -->
@@ -211,6 +340,6 @@
     <!-- 成功・エラーメッセージ -->
     <div class="toast" id="toast"></div>
 
-    <script src="script.js?v=20240601"></script>
+    <script src="script.js?v=20241022"></script>
 </body>
 </html>

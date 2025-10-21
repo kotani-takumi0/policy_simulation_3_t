@@ -126,6 +126,18 @@ class HistoryPage {
             });
         });
 
+        this.historyListEl.querySelectorAll('.history-open-option').forEach((button) => {
+            button.addEventListener('click', (event) => {
+                event.stopPropagation();
+                const optionId = Number(button.dataset.optionId);
+                if (!Number.isFinite(optionId)) {
+                    this.showToast('紐づく案の情報を取得できませんでした', 'error');
+                    return;
+                }
+                window.location.href = `index.html?optionId=${optionId}`;
+            });
+        });
+
         const firstCard = this.historyListEl.querySelector('.history-card');
         if (firstCard) {
             firstCard.classList.add('expanded');
@@ -134,6 +146,8 @@ class HistoryPage {
 
     renderHistoryCard(item) {
         const projectName = this.sanitize(item.projectName) || '名称未設定';
+        const linkedOptionId = Number(item.linkedOptionId);
+        const hasLinkedOption = Number.isFinite(linkedOptionId) && linkedOptionId > 0;
         const createdAt = this.formatDate(item.createdAt);
         const currentSituation = this.formatMultiline(item.currentSituation || '---');
         const projectOverview = this.formatMultiline(item.projectOverview || '---');
@@ -167,14 +181,22 @@ class HistoryPage {
             })
             .join('');
 
+        const optionBadge = hasLinkedOption ? '<span class="history-badge">案の検討あり</span>' : '';
+        const openButton = hasLinkedOption
+            ? `<button class="history-open-option" type="button" data-option-id="${linkedOptionId}" aria-label="検討状況を開く">
+                    <i class="fas fa-external-link-alt"></i>
+               </button>`
+            : '';
+
         return `
-            <div class="history-card" data-history-id="${item.id}">
+            <div class="history-card" data-history-id="${item.id}" ${hasLinkedOption ? `data-option-id="${linkedOptionId}"` : ''}>
                 <div class="history-card-header">
                     <div>
-                        <h3>${projectName}</h3>
+                        <h3>${projectName} ${optionBadge}</h3>
                         <p class="history-meta">作成日時: ${createdAt} / 類似事業: ${referenceCount}件</p>
                     </div>
                     <div class="history-header-actions">
+                        ${openButton}
                         <button class="history-delete" type="button" aria-label="ログを削除">
                             <i class="fas fa-trash"></i>
                         </button>

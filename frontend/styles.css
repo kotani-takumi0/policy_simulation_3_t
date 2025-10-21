@@ -701,3 +701,294 @@ a {
 .history-delete:hover {
     background: #ffe3e6;
 }
+
+.history-open-option {
+    border: none;
+    background: #edf2ff;
+    color: #3b5bdb;
+    border-radius: 50%;
+    width: 2.3rem;
+    height: 2.3rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.history-open-option:hover {
+    background: #d7dcff;
+}
+
+.history-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-left: 0.5rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    background: #f0f4ff;
+    color: #2c5282;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+/* 案詳細セクション */
+.option-detail-card {
+    margin-top: 2rem;
+}
+
+.option-detail-header {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 1.25rem;
+}
+
+.option-detail-header h3 {
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.option-meta {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 1rem;
+    margin: 0;
+}
+
+.option-meta dt {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: #718096;
+    letter-spacing: 0.05em;
+}
+
+.option-meta dd {
+    margin: 0.25rem 0 0;
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+
+.option-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 1.5rem;
+}
+
+.option-column {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.option-panel {
+    background: #f9fbff;
+    border: 1px solid #e2e7f5;
+    border-radius: 12px;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    min-height: 0;
+}
+
+.option-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+}
+
+.option-panel-header h3 {
+    font-size: 1.05rem;
+    font-weight: 600;
+}
+
+.option-panel-header .muted {
+    font-size: 0.85rem;
+}
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    background: #e2e8f0;
+    color: #2d3748;
+}
+
+.status-draft {
+    background: #edf2ff;
+    color: #3b5bdb;
+}
+
+.status-in_review {
+    background: #fff7db;
+    color: #b7791f;
+}
+
+.status-approved {
+    background: #e6fffa;
+    color: #2c7a7b;
+}
+
+.status-published {
+    background: #ffece3;
+    color: #c05621;
+}
+
+.status-archived {
+    background: #f7fafc;
+    color: #4a5568;
+}
+
+.status-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.workflow-history,
+.review-history {
+    background: white;
+    border-radius: 10px;
+    padding: 1rem;
+    border: 1px solid #e2e8f0;
+}
+
+.timeline-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    font-size: 0.85rem;
+}
+
+.timeline-list li {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px dashed #cbd5f5;
+}
+
+.timeline-list li:last-child {
+    border-bottom: none;
+}
+
+.timeline-list li strong {
+    font-weight: 600;
+    color: #2d3748;
+}
+
+.timeline-list li span {
+    font-size: 0.85rem;
+    color: #4a5568;
+}
+
+.stacked-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.stacked-form input,
+.stacked-form textarea,
+.stacked-form select {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #d0d7e6;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    background: white;
+}
+
+.stacked-form.inline .form-row {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.stacked-form.inline .form-field {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.stacked-form.inline .form-field.narrow {
+    max-width: 160px;
+}
+
+.evidence-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.evidence-list li {
+    background: white;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    padding: 0.75rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.evidence-list li a {
+    color: #2b6cb0;
+    font-weight: 600;
+}
+
+.assessment-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.assessment-item {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.assessment-item header {
+    display: flex;
+    justify-content: space-between;
+    font-weight: 600;
+}
+
+.assessment-item .score-input {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.assessment-item .score-input input {
+    width: 6rem;
+    padding: 0.5rem;
+    border: 1px solid #d0d7e6;
+    border-radius: 6px;
+    text-align: right;
+}
+
+.muted {
+    color: #718096;
+    font-size: 0.85rem;
+}

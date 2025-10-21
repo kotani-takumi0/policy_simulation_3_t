@@ -14,6 +14,18 @@ class PolicyBudgetSimulator {
         this.budgetInsights = null;
         this.serverEstimatedBudget = null;
         this.proposedBudget = null;
+        this.currentOptionDetail = null;
+        this.currentOptionId = null;
+        this.currentOptionVersionId = null;
+        this.currentCaseId = null;
+        this.criteria = [];
+        this.allowedTransitions = {
+            draft: ['in_review'],
+            in_review: ['approved', 'draft'],
+            approved: ['published', 'archived'],
+            published: ['archived'],
+            archived: [],
+        };
         this.init();
     }
 
@@ -23,9 +35,22 @@ class PolicyBudgetSimulator {
         this.updateAnalysisSummary();
         this.updateKpiSection();
         this.showToast('初期化が完了しました', 'info');
+        this.initializeFromQuery();
     }
 
     bindEvents() {
+        this.optionDetailSection = document.getElementById('optionDetailSection');
+        this.optionStatusLabel = document.getElementById('optionStatusLabel');
+        this.workflowHistoryList = document.getElementById('workflowHistoryList');
+        this.reviewHistoryList = document.getElementById('reviewHistoryList');
+        this.evidenceListEl = document.getElementById('evidenceList');
+        this.assessmentListEl = document.getElementById('assessmentList');
+        this.optionDetailTitleEl = document.getElementById('optionDetailTitle');
+        this.optionDetailSummaryEl = document.getElementById('optionDetailSummary');
+        this.optionVersionLabelEl = document.getElementById('optionVersionLabel');
+        this.optionCreatedAtEl = document.getElementById('optionCreatedAt');
+        this.optionUpdatedAtEl = document.getElementById('optionUpdatedAt');
+
         document.getElementById('projectForm').addEventListener('submit', (e) => {
             e.preventDefault();
             this.handleFormSubmit();
@@ -57,6 +82,60 @@ class PolicyBudgetSimulator {
         if (saveAsOptionBtn) {
             saveAsOptionBtn.addEventListener('click', () => {
                 this.saveAsOption();
+            });
+        }
+
+        const workflowButtons = [
+            { id: 'requestReviewBtn', status: 'in_review' },
+            { id: 'approveBtn', status: 'approved' },
+            { id: 'requestChangesBtn', status: 'draft' },
+            { id: 'publishBtn', status: 'published' },
+            { id: 'archiveBtn', status: 'archived' },
+        ];
+
+        workflowButtons.forEach(({ id, status }) => {
+            const button = document.getElementById(id);
+            if (button) {
+                button.addEventListener('click', () => {
+                    this.handleWorkflowTransition(status);
+                });
+            }
+        });
+
+        const reviewForm = document.getElementById('reviewForm');
+        if (reviewForm) {
+            reviewForm.addEventListener('submit', (event) => {
+                event.preventDefault();
+                this.submitReview();
+            });
+        }
+
+        const evidenceForm = document.getElementById('evidenceForm');
+        if (evidenceForm) {
+            evidenceForm.addEventListener('submit', (event) => {
+                event.preventDefault();
+                this.submitEvidence();
+            });
+        }
+
+        const criterionForm = document.getElementById('criterionForm');
+        if (criterionForm) {
+            criterionForm.addEventListener('submit', (event) => {
+                event.preventDefault();
+                this.submitCriterion();
+            });
+        }
+
+        const assessmentList = document.getElementById('assessmentList');
+        if (assessmentList) {
+            assessmentList.addEventListener('click', (event) => {
+                const target = event.target;
+                if (target instanceof HTMLElement && target.dataset.action === 'save-assessment') {
+                    const criterionId = Number(target.dataset.criterionId);
+                    if (Number.isFinite(criterionId)) {
+                        this.submitAssessment(criterionId);
+                    }
+                }
             });
         }
 
@@ -132,6 +211,7 @@ class PolicyBudgetSimulator {
                 change_note: '初回ドラフト',
                 created_by: this.defaultUserId,
                 visibility: 'org',
+                analysis_history_id: this.latestAnalysis?.history_id || null,
             };
             const optRes = await fetch(`${this.newApiBaseUrl}/api/v1/options`, {
                 method: 'POST',
@@ -145,6 +225,11 @@ class PolicyBudgetSimulator {
             const option = await optRes.json();
 
             this.showToast(`ケース#${policyCase.id} に案#${option.id} (v${option.latest_version_number}) を保存しました`, 'success');
+            this.updateCurrentOption(option);
+            if (option.policy_case_id) {
+                await this.loadCriteria(option.policy_case_id);
+            }
+            this.renderOptionDetail(this.currentOptionDetail);
         } catch (e) {
             console.error(e);
             this.showToast(e.message || '新APIへの保存に失敗しました', 'error');
@@ -180,6 +265,34 @@ class PolicyBudgetSimulator {
         }
         const sign = rounded > 0 ? '+' : '';
         return `${sign}${formatted}`;
+    }
+
+    formatDateTime(value) {
+        if (!value) {
+            return '--';
+        }
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+            return this.sanitizeHTML(String(value));
+        }
+        const yyyy = date.getFullYear();
+        const mm = String(date.getMonth() + 1).padStart(2, '0');
+        const dd = String(date.getDate()).padStart(2, '0');
+        const hh = String(date.getHours()).padStart(2, '0');
+        const mi = String(date.getMinutes()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+    }
+
+    formatDateTime(value) {
+        if (!value) {
+            return '--';
+        }
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+            return this.sanitizeHTML(String(value));
+        }
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ` +
+            `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
     }
 
     buildRsSystemUrl(project) {
@@ -666,6 +779,11 @@ class PolicyBudgetSimulator {
         this.budgetInsights = null;
         this.serverEstimatedBudget = null;
         this.proposedBudget = null;
+        this.currentOptionDetail = null;
+        this.currentOptionId = null;
+        this.currentOptionVersionId = null;
+        this.toggleOptionDetail(false);
+        this.resetOptionDetail();
         this.renderProjectsList();
         this.updateAnalysisSummary();
         this.updateKpiSection();
@@ -756,6 +874,489 @@ class PolicyBudgetSimulator {
         } catch (error) {
             console.error('保存処理でエラーが発生しました:', error);
             this.showToast(error.message || '分析の保存に失敗しました', 'error');
+        }
+    }
+
+    toggleOptionDetail(visible) {
+        if (!this.optionDetailSection) {
+            return;
+        }
+        this.optionDetailSection.style.display = visible ? 'block' : 'none';
+        if (!visible) {
+            this.resetOptionDetail();
+        }
+    }
+
+    getLatestVersionDetail(optionDetail = this.currentOptionDetail) {
+        if (!optionDetail || !Array.isArray(optionDetail.versions) || optionDetail.versions.length === 0) {
+            return null;
+        }
+        return optionDetail.versions.reduce((acc, cur) => (cur.version_number > acc.version_number ? cur : acc));
+    }
+
+    updateCurrentOption(optionDetail) {
+        this.currentOptionDetail = optionDetail;
+        this.currentOptionId = optionDetail?.id ?? null;
+        this.currentCaseId = optionDetail?.policy_case_id ?? null;
+        const latestVersion = this.getLatestVersionDetail(optionDetail);
+        this.currentOptionVersionId = latestVersion?.id ?? null;
+        this.toggleOptionDetail(true);
+        this.renderOptionDetail(optionDetail);
+    }
+
+    renderOptionDetail(optionDetail) {
+        if (!optionDetail || !this.optionStatusLabel) {
+            return;
+        }
+
+        const status = optionDetail.status || 'draft';
+        const statusTextMap = {
+            draft: 'ドラフト',
+            in_review: 'レビュー中',
+            approved: '承認済み',
+            published: '公開済み',
+            archived: 'アーカイブ済み',
+        };
+
+        const latestVersion = this.getLatestVersionDetail(optionDetail);
+        if (this.optionDetailTitleEl) {
+            this.optionDetailTitleEl.textContent = optionDetail.title || '案件タイトル未設定';
+        }
+        if (this.optionDetailSummaryEl) {
+            const summaryText = optionDetail.summary || '保存した案の概要がここに表示されます。';
+            this.optionDetailSummaryEl.innerHTML = this.formatMultiline(summaryText);
+        }
+        if (this.optionVersionLabelEl) {
+            const versionNumber = latestVersion?.version_number || 1;
+            this.optionVersionLabelEl.textContent = `v${versionNumber}`;
+        }
+        if (this.optionCreatedAtEl) {
+            this.optionCreatedAtEl.textContent = this.formatDateTime(optionDetail.created_at);
+        }
+        if (this.optionUpdatedAtEl) {
+            this.optionUpdatedAtEl.textContent = this.formatDateTime(optionDetail.updated_at);
+        }
+
+        this.optionStatusLabel.textContent = statusTextMap[status] || status;
+        this.optionStatusLabel.className = `status-badge status-${status}`;
+
+        if (this.workflowHistoryList) {
+            if (Array.isArray(optionDetail.workflow_history) && optionDetail.workflow_history.length > 0) {
+                this.workflowHistoryList.innerHTML = optionDetail.workflow_history
+                    .map((item) => {
+                        const dateLabel = new Date(item.changed_at).toLocaleString();
+                        const stateLabel = `${item.from_status} → ${item.to_status}`;
+                        const note = item.note ? this.sanitizeHTML(item.note) : '（メモなし）';
+                        return `<li><strong>${stateLabel}</strong><span>${dateLabel}</span><span>${note}</span></li>`;
+                    })
+                    .join('');
+            } else {
+                this.workflowHistoryList.innerHTML = '<li>まだステータス変更はありません</li>';
+            }
+        }
+
+        if (this.reviewHistoryList) {
+            if (Array.isArray(optionDetail.reviews) && optionDetail.reviews.length > 0) {
+                this.reviewHistoryList.innerHTML = optionDetail.reviews
+                    .map((review) => {
+                        const dateLabel = new Date(review.created_at).toLocaleString();
+                        const outcomeLabel = {
+                            comment: 'コメント',
+                            approve: '承認',
+                            request_changes: '差戻',
+                        }[review.outcome] || review.outcome;
+                        const comment = review.comment ? this.formatMultiline(review.comment) : '（コメントなし）';
+                        return `<li><strong>${outcomeLabel}</strong><span>${dateLabel}</span><span>${comment}</span></li>`;
+                    })
+                    .join('');
+            } else {
+                this.reviewHistoryList.innerHTML = '<li>まだレビューは登録されていません</li>';
+            }
+        }
+
+        if (this.evidenceListEl) {
+            if (latestVersion && Array.isArray(latestVersion.evidences) && latestVersion.evidences.length > 0) {
+                this.evidenceListEl.innerHTML = latestVersion.evidences
+                    .map((ev) => {
+                        const sourceLink = ev.source_url
+                            ? `<a href="${this.sanitizeHTML(ev.source_url)}" target="_blank" rel="noopener">${this.sanitizeHTML(ev.source_title || '出典リンク')}</a>`
+                            : '<span>出典リンクなし</span>';
+                        const snippet = ev.snippet ? this.formatMultiline(ev.snippet) : '（抜粋なし）';
+                        const note = ev.note ? this.formatMultiline(ev.note) : '';
+                        return `
+                            <li>
+                                <div><strong>${sourceLink}</strong></div>
+                                <div>${snippet}</div>
+                                ${note ? `<div class="muted">${note}</div>` : ''}
+                            </li>
+                        `;
+                    })
+                    .join('');
+            } else {
+                this.evidenceListEl.innerHTML = '<li>根拠がまだ登録されていません</li>';
+            }
+        }
+
+        this.updateWorkflowButtons(status);
+        this.renderAssessmentList();
+    }
+
+    resetOptionDetail() {
+        if (this.optionDetailTitleEl) {
+            this.optionDetailTitleEl.textContent = '案が保存されていません';
+        }
+        if (this.optionDetailSummaryEl) {
+            this.optionDetailSummaryEl.textContent = '分析を保存すると、ここに案の概要と作業状況が表示されます。';
+        }
+        if (this.optionVersionLabelEl) {
+            this.optionVersionLabelEl.textContent = 'v1';
+        }
+        if (this.optionCreatedAtEl) {
+            this.optionCreatedAtEl.textContent = '--';
+        }
+        if (this.optionUpdatedAtEl) {
+            this.optionUpdatedAtEl.textContent = '--';
+        }
+        if (this.optionStatusLabel) {
+            this.optionStatusLabel.textContent = '未保存';
+            this.optionStatusLabel.className = 'status-badge status-draft';
+        }
+        if (this.workflowHistoryList) {
+            this.workflowHistoryList.innerHTML = '';
+        }
+        if (this.reviewHistoryList) {
+            this.reviewHistoryList.innerHTML = '';
+        }
+        if (this.evidenceListEl) {
+            this.evidenceListEl.innerHTML = '';
+        }
+        if (this.assessmentListEl) {
+            this.assessmentListEl.innerHTML = '';
+        }
+        this.criteria = [];
+    }
+
+    async initializeFromQuery() {
+        const params = new URLSearchParams(window.location.search);
+        const optionIdParam = params.get('optionId');
+        if (!optionIdParam) {
+            return;
+        }
+        const optionId = Number(optionIdParam);
+        if (!Number.isFinite(optionId)) {
+            return;
+        }
+        await this.fetchAndDisplayOption(optionId);
+    }
+
+    async fetchAndDisplayOption(optionId) {
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/api/v1/options/${optionId}`);
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.detail || '案の取得に失敗しました');
+            }
+            const option = await response.json();
+            this.updateCurrentOption(option);
+            if (option.policy_case_id) {
+                await this.loadCriteria(option.policy_case_id);
+            }
+            this.renderOptionDetail(this.currentOptionDetail);
+            if (this.optionDetailSection) {
+                this.optionDetailSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+            this.showToast(`案 #${optionId} を読み込みました`, 'success');
+        } catch (error) {
+            console.error('Failed to load option from query:', error);
+            this.showToast(error.message || '案の読み込みに失敗しました', 'error');
+        }
+    }
+
+    updateWorkflowButtons(status) {
+        const transitions = this.allowedTransitions[status] || [];
+        const buttons = {
+            in_review: document.getElementById('requestReviewBtn'),
+            approved: document.getElementById('approveBtn'),
+            draft: document.getElementById('requestChangesBtn'),
+            published: document.getElementById('publishBtn'),
+            archived: document.getElementById('archiveBtn'),
+        };
+
+        Object.entries(buttons).forEach(([targetStatus, button]) => {
+            if (!button) {
+                return;
+            }
+            button.disabled = !transitions.includes(targetStatus);
+        });
+    }
+
+    async handleWorkflowTransition(toStatus) {
+        if (!this.currentOptionId) {
+            this.showToast('先に案として保存してください', 'error');
+            return;
+        }
+        const payload = {
+            to_status: toStatus,
+            note: null,
+            changed_by: this.defaultUserId,
+        };
+
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/api/v1/options/${this.currentOptionId}/workflow/transition`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.detail || response.statusText);
+            }
+
+            const option = await response.json();
+            this.showToast('ステータスを更新しました', 'success');
+            this.updateCurrentOption(option);
+        } catch (error) {
+            console.error('ステータス変更に失敗しました:', error);
+            this.showToast(error.message || 'ステータス変更に失敗しました', 'error');
+        }
+    }
+
+    async submitReview() {
+        if (!this.currentOptionId || !this.currentOptionVersionId) {
+            this.showToast('案データがありません', 'error');
+            return;
+        }
+
+        const outcomeEl = document.getElementById('reviewOutcome');
+        const commentEl = document.getElementById('reviewComment');
+        const outcome = outcomeEl?.value || 'comment';
+        const comment = commentEl?.value || '';
+
+        const payload = {
+            option_version_id: this.currentOptionVersionId,
+            reviewer_id: this.defaultUserId,
+            outcome,
+            comment,
+        };
+
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/api/v1/options/${this.currentOptionId}/reviews`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.detail || response.statusText);
+            }
+
+            const option = await response.json();
+            this.showToast('レビューを登録しました', 'success');
+            if (commentEl) {
+                commentEl.value = '';
+            }
+            this.updateCurrentOption(option);
+        } catch (error) {
+            console.error('レビュー登録に失敗しました:', error);
+            this.showToast(error.message || 'レビュー登録に失敗しました', 'error');
+        }
+    }
+
+    async submitEvidence() {
+        if (!this.currentOptionId || !this.currentOptionVersionId) {
+            this.showToast('案データがありません', 'error');
+            return;
+        }
+
+        const urlEl = document.getElementById('evidenceUrl');
+        const snippetEl = document.getElementById('evidenceSnippet');
+        const noteEl = document.getElementById('evidenceNote');
+
+        const payload = {
+            source_url: urlEl?.value || null,
+            snippet: snippetEl?.value || null,
+            note: noteEl?.value || null,
+            created_by: this.defaultUserId,
+        };
+
+        if (!payload.source_url && !payload.snippet) {
+            this.showToast('出典URLまたは抜粋を入力してください', 'error');
+            return;
+        }
+
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/api/v1/options/${this.currentOptionId}/versions/${this.currentOptionVersionId}/evidence`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.detail || response.statusText);
+            }
+
+            const option = await response.json();
+            this.showToast('根拠を追加しました', 'success');
+            if (urlEl) urlEl.value = '';
+            if (snippetEl) snippetEl.value = '';
+            if (noteEl) noteEl.value = '';
+            this.updateCurrentOption(option);
+        } catch (error) {
+            console.error('根拠の追加に失敗しました:', error);
+            this.showToast(error.message || '根拠の追加に失敗しました', 'error');
+        }
+    }
+
+    async submitCriterion() {
+        if (!this.currentCaseId) {
+            this.showToast('先にケースを作成してください', 'error');
+            return;
+        }
+
+        const nameInput = document.getElementById('criterionName');
+        const weightInput = document.getElementById('criterionWeight');
+
+        const name = nameInput?.value?.trim() || '';
+        const weightValue = weightInput?.value ? Number(weightInput.value) : null;
+
+        if (!name) {
+            this.showToast('評価基準名を入力してください', 'error');
+            return;
+        }
+
+        const payload = {
+            name,
+            weight: Number.isFinite(weightValue) ? weightValue : null,
+        };
+
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/api/v1/cases/${this.currentCaseId}/criteria`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.detail || response.statusText);
+            }
+
+            const criterion = await response.json();
+            this.criteria.push(criterion);
+            if (nameInput) nameInput.value = '';
+            if (weightInput) weightInput.value = '';
+            this.renderAssessmentList();
+            this.showToast('評価基準を追加しました', 'success');
+        } catch (error) {
+            console.error('評価基準の追加に失敗しました:', error);
+            this.showToast(error.message || '評価基準の追加に失敗しました', 'error');
+        }
+    }
+
+    async loadCriteria(caseId) {
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/api/v1/cases/${caseId}/criteria`);
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.detail || response.statusText);
+            }
+            const items = await response.json();
+            this.criteria = Array.isArray(items) ? items : [];
+            this.renderAssessmentList();
+        } catch (error) {
+            console.error('評価基準の取得に失敗しました:', error);
+            this.showToast(error.message || '評価基準の取得に失敗しました', 'error');
+        }
+    }
+
+    renderAssessmentList() {
+        if (!this.assessmentListEl) {
+            return;
+        }
+
+        const latestVersion = this.getLatestVersionDetail();
+        const assessments = latestVersion && Array.isArray(latestVersion.assessments)
+            ? latestVersion.assessments
+            : [];
+
+        if (!this.criteria.length) {
+            this.assessmentListEl.innerHTML = '<p class="muted">評価基準がまだ登録されていません。新しく追加してください。</p>';
+            return;
+        }
+
+        this.assessmentListEl.innerHTML = this.criteria
+            .map((criterion) => {
+                const current = assessments.find((item) => item.criterion_id === criterion.id);
+                const score = current?.score ?? '';
+                const note = current?.note ?? '';
+                const weightLabel = typeof criterion.weight === 'number' ? `（重み: ${criterion.weight}）` : '';
+                return `
+                    <div class="assessment-item" data-criterion-id="${criterion.id}">
+                        <header>
+                            <span>${this.sanitizeHTML(criterion.name)}${weightLabel}</span>
+                            <span>最新評価: ${score === '' ? '―' : score}</span>
+                        </header>
+                        <div class="score-input">
+                            <label for="criterion-score-${criterion.id}">スコア</label>
+                            <input type="number" step="0.1" id="criterion-score-${criterion.id}" value="${score}" />
+                        </div>
+                        <div class="score-input">
+                            <label for="criterion-note-${criterion.id}">メモ</label>
+                            <textarea id="criterion-note-${criterion.id}" rows="2">${this.sanitizeHTML(note)}</textarea>
+                        </div>
+                        <button type="button" class="btn btn-outline" data-action="save-assessment" data-criterion-id="${criterion.id}">
+                            <i class="fas fa-save"></i> 評価を保存
+                        </button>
+                    </div>
+                `;
+            })
+            .join('');
+    }
+
+    async submitAssessment(criterionId) {
+        if (!this.currentOptionId || !this.currentOptionVersionId) {
+            this.showToast('案データがありません', 'error');
+            return;
+        }
+
+        const scoreInput = document.getElementById(`criterion-score-${criterionId}`);
+        const noteInput = document.getElementById(`criterion-note-${criterionId}`);
+        const scoreValue = scoreInput?.value ? Number(scoreInput.value) : null;
+        const noteValue = noteInput?.value || null;
+
+        if (scoreInput && scoreInput.value && !Number.isFinite(scoreValue)) {
+            this.showToast('スコアは数値で入力してください', 'error');
+            return;
+        }
+
+        const payload = {
+            criterion_id: criterionId,
+            score: Number.isFinite(scoreValue) ? scoreValue : null,
+            note: noteValue,
+            assessed_by: this.defaultUserId,
+        };
+
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/api/v1/options/${this.currentOptionId}/versions/${this.currentOptionVersionId}/assessments`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.detail || response.statusText);
+            }
+
+            const option = await response.json();
+            this.showToast('評価を更新しました', 'success');
+            this.updateCurrentOption(option);
+        } catch (error) {
+            console.error('評価の更新に失敗しました:', error);
+            this.showToast(error.message || '評価の更新に失敗しました', 'error');
         }
     }
 
