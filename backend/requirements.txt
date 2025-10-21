@@ -6,3 +6,6 @@ openai
 python-dotenv
 sqlalchemy
 pyarrow
+alembic
+pytest
+httpx
