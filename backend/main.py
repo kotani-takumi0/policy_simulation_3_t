@@ -1,3 +1,5 @@
+import warnings
+
 from fastapi import FastAPI, HTTPException
 # パッケージ実行時とスクリプト実行時の両方に対応
 try:
@@ -7,7 +9,7 @@ except ImportError:
     # 単体モジュールとして実行された場合（uvicorn main:app を backend ディレクトリで実行など）
     import semantic_search  # type: ignore
 import numpy as np
-from openai import OpenAI # <- これに変更
+from openai import OpenAI  # <- これに変更
 from dotenv import load_dotenv
 import os
 from datetime import datetime
@@ -16,6 +18,12 @@ from sqlalchemy import create_engine, Column, Integer, String, Float, Text, text
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.ext.declarative import declarative_base
 import json
+
+warnings.warn(
+    "backend/main.py はレガシー API です。新しい API は backend.app.main を利用してください。",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 # .envファイルからAPIキーを読み込む
 load_dotenv() 
