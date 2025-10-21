@@ -318,6 +318,21 @@ class DecisionTag(Base):
     tag: Mapped[Tag] = relationship(back_populates="decision_links")
 
 
+class AnalysisHistory(Base):
+    __tablename__ = "analysis_history"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    project_overview: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    current_situation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    initial_budget: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    estimated_budget: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    references_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=UTC_NOW
+    )
+
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 

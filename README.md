@@ -44,16 +44,15 @@ cd backend
 make dev  # uvicorn backend.app.main:app --reload
 ```
 - `http://127.0.0.1:8000/healthz` が `{"status": "ok"}` を返せば準備完了です。
-- フェーズ1で `PolicyCase` / `Option` / `OptionVersion` / タグ辞書が追加されました。新しい CRUD API は下記を参照してください。
+- フェーズ1で `PolicyCase` / `Option` / `OptionVersion` / タグ辞書に加え、分析 API (`/api/v1/analyses` など旧来のエンドポイント) も統合済みです。
 
-### レガシーバックエンド（凍結中）
-既存フロントが依存する API。今後は新バックエンドへ移行予定です。
+### レガシーバックエンド（凍結中・任意）
+旧エンドポイントが必要な場合のみ起動してください。
 ```bash
 cd backend
-uvicorn main:app --reload --port 8000
+uvicorn main:app --reload --port 8001
 ```
-- 起動時に `参照データ 'final.parquet' を読み込んでいます...` と表示され、正常にロードできれば `✅` ログが出ます。
-- 保存先は `analysis_history.db`（今後の統合作業で移行予定）。
+※ 新バックエンドが分析・履歴保存を引き継いだため、通常運用では不要です。
 
 ### フロントエンド
 ```bash
@@ -63,7 +62,7 @@ python -m http.server 5500
 - ブラウザで `http://127.0.0.1:5500` にアクセスします。
 
 ## データベースとマイグレーション
-- Alembic でスキーマ管理します。フェーズ1では `policy_cases`, `options`, `option_versions`, `tags`, `decision_tags` が追加されています。
+- Alembic でスキーマ管理します。フェーズ1では `policy_cases`, `options`, `option_versions`, `tags`, `decision_tags`, `analysis_history` が追加されています。
 - マイグレーション適用:
   ```bash
   cd backend
@@ -81,7 +80,7 @@ python -m http.server 5500
 cd backend
 make test
 ```
-- `backend/tests` 配下のテストが実行されます。Decision API のタグ正規化、ヘルスチェック、新設した PolicyCase/Option API がカバーされています。
+- `backend/tests` 配下のテストが実行されます。Decision API、分析 API、PolicyCase/Option API、ヘルスチェックをカバーしています。
 
 ## 運用上の注意
 - `.env` や `*.db` は機密・生成ファイルのためコミットしないでください。
@@ -89,6 +88,7 @@ make test
 - OpenAI API の利用には課金が発生するため、利用状況に注意してください。
 
 ## 新バックエンド API（フェーズ1）
+- `POST /api/v1/analyses` / `POST /api/v1/save_analysis` / `GET /api/v1/history` / `DELETE /api/v1/history/{id}` : 類似事業検索・履歴保存。OpenAI Embedding → `semantic_search.analyze_similarity` のフローは従来どおりです。
 - `POST /api/v1/cases` / `GET /api/v1/cases/{id}` : ケース（PolicyCase）の作成と取得。Option の一覧は最新バージョン番号つきで返却します。
 - `POST /api/v1/options` : ケース配下の案（Option）を作成します。初回バージョン（v1）が自動生成され、既存 Candidate との関連付けも可能です。
 - `GET /api/v1/options/{id}` : 案の詳細を取得し、バージョン履歴を返却します。

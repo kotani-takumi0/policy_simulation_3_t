@@ -1,6 +1,27 @@
+function buildRsSystemUrl(project) {
+    if (!project || typeof project !== 'object') {
+        return null;
+    }
+
+    const rawId = Object.prototype.hasOwnProperty.call(project, 'project_id')
+        ? project.project_id
+        : project.projectId;
+
+    if (rawId === undefined || rawId === null) {
+        return null;
+    }
+
+    const idText = String(rawId).trim();
+    if (!idText || idText.toLowerCase() === 'nan') {
+        return null;
+    }
+
+    return `https://rssystem.go.jp/project?projectNumbers=${encodeURIComponent(idText)}`;
+}
+
 class HistoryPage {
     constructor() {
-        this.apiBaseUrl = 'http://127.0.0.1:8000';
+        this.apiBaseUrl = 'http://127.0.0.1:8001';
         this.historyListEl = document.getElementById('historyList');
         this.statusEl = document.getElementById('historyStatus');
         this.init();
@@ -126,7 +147,7 @@ class HistoryPage {
                 const ministry = this.sanitize(ref.ministry_name || '所属不明');
                 const similarity = typeof ref.similarity === 'number' ? ref.similarity.toFixed(3) : '---';
                 const url = this.createLink(ref.project_url);
-                const rsSystemUrl = this.buildRsSystemUrl(ref);
+                const rsSystemUrl = buildRsSystemUrl(ref);
                 const rsLink = rsSystemUrl
                     ? this.createLink(rsSystemUrl, 'RSシステム')
                     : '<span class="link-unavailable">RSリンクなし</span>';
@@ -221,27 +242,6 @@ class HistoryPage {
             return '---';
         }
         return `¥${Math.round(value).toLocaleString('ja-JP')}`;
-    }
-
-    buildRsSystemUrl(project) {
-        if (!project || typeof project !== 'object') {
-            return null;
-        }
-
-        const rawId = Object.prototype.hasOwnProperty.call(project, 'project_id')
-            ? project.project_id
-            : project.projectId;
-
-        if (rawId === undefined || rawId === null) {
-            return null;
-        }
-
-        const idText = String(rawId).trim();
-        if (!idText || idText.toLowerCase() === 'nan') {
-            return null;
-        }
-
-        return `https://rssystem.go.jp/project?projectNumbers=${encodeURIComponent(idText)}`;
     }
 
     createLink(url, label = null) {

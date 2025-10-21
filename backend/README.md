@@ -4,7 +4,7 @@
 - `backend/app/` 以下が新しいバックエンドです。`backend/app/main.py` が FastAPI アプリケーションのエントリポイントになります。
 - `backend/main.py` はレガシー API で、既存フロントエンドからの利用を維持するために残しています（機能追加は行いません）。
 - SQLite の接続先は `.env` の `DATABASE_URL` で指定します。未設定の場合は `sqlite:///./app.db` を利用します。
-- フェーズ1で `PolicyCase` / `Option` / `OptionVersion` / `Tag` / `DecisionTag` が追加され、意思決定情報を構造化できるようになりました。
+- フェーズ1で `PolicyCase` / `Option` / `OptionVersion` / `Tag` / `DecisionTag` に加え、分析系エンドポイント（`/api/v1/analyses` など）も新バックエンドに統合されました。
 
 ## セットアップ
 ```bash
@@ -41,9 +41,10 @@ make dev  # uvicorn backend.app.main:app --reload
 ```bash
 make test
 ```
-- Decision API（タグ正規化含む）、PolicyCase/Option API、ヘルスチェックのテストが走ります。必要に応じて `backend/tests/` に追加してください。
+- Decision API（タグ正規化含む）、分析 API、PolicyCase/Option API、ヘルスチェックのテストが走ります。必要に応じて `backend/tests/` に追加してください。
 
 ## 新規 API エンドポイント
+- `POST /api/v1/analyses` / `POST /api/v1/save_analysis` / `GET /api/v1/history` / `DELETE /api/v1/history/{id}` : 類似事業検索と履歴保存。OpenAI Embedding → `semantic_search.analyze_similarity` のロジックは従来どおりです。
 - `POST /api/v1/cases` / `GET /api/v1/cases/{id}` : PolicyCase の作成と取得。関連する Option 一覧を返却します。
 - `POST /api/v1/options` : Option を作成し、初期バージョン (`option_versions` v1) を自動登録します。候補 (`candidates`) との紐付けが可能です。
 - `GET /api/v1/options/{id}` : Option とバージョン履歴を取得します。
@@ -52,4 +53,4 @@ make test
 
 ## レガシー API 利用時の注意
 - `backend/main.py` は互換性維持のために残しています。起動すると `DeprecationWarning` を出力します。
-- 保存先は `analysis_history.db` のままです。新しいデータモデルへの移行は今後のフェーズで対応します。
+- 保存先は `analysis_history.db` のままです。新バックエンドへ統合したため、通常運用では不要です（旧クライアント向けのみ利用）。

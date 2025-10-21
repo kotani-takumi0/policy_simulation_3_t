@@ -3,6 +3,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from backend import semantic_search
+
 
 def _ensure_repo_root_on_sys_path() -> None:
     # This file lives in `<repo>/backend/conftest.py`.
@@ -17,3 +19,9 @@ def _ensure_repo_root_on_sys_path() -> None:
 
 _ensure_repo_root_on_sys_path()
 
+
+def _noop_load_data() -> None:
+    """Stub semantic_search data loading during tests."""
+
+
+semantic_search.load_data_and_vectors = _noop_load_data  # type: ignore[attr-defined]

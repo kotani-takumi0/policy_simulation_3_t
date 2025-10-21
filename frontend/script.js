@@ -5,10 +5,9 @@ class PolicyBudgetSimulator {
         this.similarProjects = [];
         this.latestAnalysis = null;
         this.currentTab = 'all';
-        // 旧API（分析・履歴）
-        this.apiBaseUrl = 'http://127.0.0.1:8000';
-        // 新API（ケース/案/版）
-        this.newApiBaseUrl = 'http://127.0.0.1:8001';
+        // バックエンドのベースURL（分析・保存・ケース管理を統合）
+        this.apiBaseUrl = 'http://127.0.0.1:8001';
+        this.newApiBaseUrl = this.apiBaseUrl;
         // デモ用に Org/User を固定する（本番はログイン情報から取得）
         this.defaultOrgId = 1; // 必要に応じて変更
         this.defaultUserId = null; // 未ログイン環境では null のまま
