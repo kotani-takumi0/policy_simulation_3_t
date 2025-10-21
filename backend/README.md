@@ -1,9 +1,10 @@
-# Backend Guide (Phase 0)
+# Backend Guide (Phase 1)
 
 ## 概要
 - `backend/app/` 以下が新しいバックエンドです。`backend/app/main.py` が FastAPI アプリケーションのエントリポイントになります。
 - `backend/main.py` はレガシー API で、既存フロントエンドからの利用を維持するために残しています（機能追加は行いません）。
 - SQLite の接続先は `.env` の `DATABASE_URL` で指定します。未設定の場合は `sqlite:///./app.db` を利用します。
+- フェーズ1で `PolicyCase` / `Option` / `OptionVersion` / `Tag` / `DecisionTag` が追加され、意思決定情報を構造化できるようになりました。
 
 ## セットアップ
 ```bash
@@ -23,7 +24,7 @@ make dev  # uvicorn backend.app.main:app --reload
 - `http://127.0.0.1:8000/healthz` にアクセスして `"status": "ok"` が返れば準備完了です。
 
 ## データベース運用（Alembic）
-- マイグレーション適用:
+- マイグレーション適用（新しいテーブルが追加されています）:
   ```bash
   make db_upgrade
   ```
@@ -40,7 +41,14 @@ make dev  # uvicorn backend.app.main:app --reload
 ```bash
 make test
 ```
-- 既存の Decision API とヘルスチェックをカバーするテストが走ります。必要に応じて `backend/tests/` に追加してください。
+- Decision API（タグ正規化含む）、PolicyCase/Option API、ヘルスチェックのテストが走ります。必要に応じて `backend/tests/` に追加してください。
+
+## 新規 API エンドポイント
+- `POST /api/v1/cases` / `GET /api/v1/cases/{id}` : PolicyCase の作成と取得。関連する Option 一覧を返却します。
+- `POST /api/v1/options` : Option を作成し、初期バージョン (`option_versions` v1) を自動登録します。候補 (`candidates`) との紐付けが可能です。
+- `GET /api/v1/options/{id}` : Option とバージョン履歴を取得します。
+- `POST /api/v1/options/{id}/versions` : Option の改訂バージョンを追加します。
+- `POST /api/v1/decisions` : 従来どおり決定を登録しますが、フェーズ1ではタグ辞書（`tags`）と中間テーブル（`decision_tags`）にも自動で書き込みます。
 
 ## レガシー API 利用時の注意
 - `backend/main.py` は互換性維持のために残しています。起動すると `DeprecationWarning` を出力します。

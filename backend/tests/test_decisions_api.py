@@ -11,7 +11,17 @@ from sqlalchemy.orm import Session, sessionmaker
 from backend.app.main import app
 from backend.app.db.base import Base
 from backend.app.db.deps import get_db
-from backend.app.db.models import AuditLog, Candidate, Decision, Org, Query, SessionRecord, User
+from backend.app.db.models import (
+    AuditLog,
+    Candidate,
+    Decision,
+    DecisionTag,
+    Org,
+    Query,
+    SessionRecord,
+    Tag,
+    User,
+)
 
 
 @pytest.fixture()
@@ -121,9 +131,37 @@ def test_create_decision_success(client: TestClient, session_factory, candidate_
     try:
         decisions = session.query(Decision).all()
         audits = session.query(AuditLog).all()
+        tags = session.query(Tag).all()
+        decision_tags = session.query(DecisionTag).all()
         assert len(decisions) == 1
         assert len(audits) == 1
+        assert len(tags) == 1
+        assert len(decision_tags) == 1
         assert decisions[0].reason_tags == "needs-review"
         assert audits[0].action == "DECIDE"
+        assert tags[0].key == "needs-review"
+        assert tags[0].label == "needs-review"
+        assert decision_tags[0].applied_label == "needs-review"
+        assert decision_tags[0].tag_id == tags[0].id
+    finally:
+        session.close()
+
+
+def test_create_decision_normalizes_tags(client: TestClient, session_factory, candidate_id: int) -> None:
+    payload = {
+        "candidate_id": candidate_id,
+        "decision": "adopt",
+        "reason_tags": ["Needs  Review", "Long Term"],
+    }
+    response = client.post("/api/v1/decisions", json=payload)
+    assert response.status_code == 201, response.text
+    data = response.json()
+    assert sorted(data["reason_tags"]) == ["Long Term", "Needs  Review"]
+
+    session = session_factory()
+    try:
+        tags = session.query(Tag).order_by(Tag.key).all()
+        assert [tag.key for tag in tags] == ["long-term", "needs-review"]
+        assert {tag.label for tag in tags} == {"Needs  Review", "Long Term"}
     finally:
         session.close()

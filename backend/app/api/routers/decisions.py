@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.db.deps import get_db
-from backend.app.db.models import AuditLog, Candidate, Decision, Rationale
+from backend.app.db.models import AuditLog, Candidate, Decision, DecisionTag, Rationale, Tag
 from backend.app.schemas.decisions import DecisionCreate, DecisionResponse
 from backend.app.utils.tags import csv_to_list, list_to_csv
 
 router = APIRouter(prefix="/api/v1/decisions", tags=["decisions"])
+
+
+def _normalize_tag_key(tag: str) -> str:
+    return "-".join(tag.lower().split())
 
 
 @router.post("", response_model=DecisionResponse, status_code=status.HTTP_201_CREATED)
@@ -37,6 +42,22 @@ def create_decision(payload: DecisionCreate, db: Session = Depends(get_db)) -> D
     )
     db.add(decision)
     db.flush()
+
+    for raw_tag in reason_tags:
+        tag_key = _normalize_tag_key(raw_tag)
+        tag = db.execute(select(Tag).where(Tag.key == tag_key)).scalar_one_or_none()
+        if tag is None:
+            tag = Tag(key=tag_key, label=raw_tag)
+            db.add(tag)
+            db.flush()
+        elif not tag.label:
+            tag.label = raw_tag
+        decision_tag = DecisionTag(
+            decision_id=decision.id,
+            tag_id=tag.id,
+            applied_label=raw_tag,
+        )
+        db.add(decision_tag)
 
     rationale_id = None
     if any(

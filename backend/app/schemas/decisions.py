@@ -4,6 +4,10 @@ from datetime import datetime
 from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field, validator
+try:  # Pydantic v2
+    from pydantic import ConfigDict  # type: ignore
+except Exception:  # pragma: no cover
+    ConfigDict = dict  # type: ignore
 
 
 class DecisionCreate(BaseModel):
@@ -32,8 +36,7 @@ class DecisionResponse(BaseModel):
     decided_at: datetime
     rationale_id: Optional[int] = None
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)  # type: ignore
 
 
 __all__ = ["DecisionCreate", "DecisionResponse"]

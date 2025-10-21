@@ -44,7 +44,7 @@ cd backend
 make dev  # uvicorn backend.app.main:app --reload
 ```
 - `http://127.0.0.1:8000/healthz` が `{"status": "ok"}` を返せば準備完了です。
-- 今後の機能拡張（Option/Case 等）はこちらに追加されます。
+- フェーズ1で `PolicyCase` / `Option` / `OptionVersion` / タグ辞書が追加されました。新しい CRUD API は下記を参照してください。
 
 ### レガシーバックエンド（凍結中）
 既存フロントが依存する API。今後は新バックエンドへ移行予定です。
@@ -63,7 +63,7 @@ python -m http.server 5500
 - ブラウザで `http://127.0.0.1:5500` にアクセスします。
 
 ## データベースとマイグレーション
-- Alembic でスキーマ管理します。Phase 0 では既存テーブルの追加・削除は行わず、運用手順のみ整備しています。
+- Alembic でスキーマ管理します。フェーズ1では `policy_cases`, `options`, `option_versions`, `tags`, `decision_tags` が追加されています。
 - マイグレーション適用:
   ```bash
   cd backend
@@ -81,9 +81,16 @@ python -m http.server 5500
 cd backend
 make test
 ```
-- `backend/tests` 配下のテストが実行されます。最低限の回帰として Decision API とヘルスチェックをカバーしています。
+- `backend/tests` 配下のテストが実行されます。Decision API のタグ正規化、ヘルスチェック、新設した PolicyCase/Option API がカバーされています。
 
 ## 運用上の注意
 - `.env` や `*.db` は機密・生成ファイルのためコミットしないでください。
 - 大容量ファイル（`*.parquet`）は Git LFS を使って管理しています。クライアント側でも LFS の設定を忘れずに行ってください。
 - OpenAI API の利用には課金が発生するため、利用状況に注意してください。
+
+## 新バックエンド API（フェーズ1）
+- `POST /api/v1/cases` / `GET /api/v1/cases/{id}` : ケース（PolicyCase）の作成と取得。Option の一覧は最新バージョン番号つきで返却します。
+- `POST /api/v1/options` : ケース配下の案（Option）を作成します。初回バージョン（v1）が自動生成され、既存 Candidate との関連付けも可能です。
+- `GET /api/v1/options/{id}` : 案の詳細を取得し、バージョン履歴を返却します。
+- `POST /api/v1/options/{id}/versions` : 案の新しいバージョン (OptionVersion) を追加します。
+- `POST /api/v1/decisions` : 既存決定 API。フェーズ1ではタグ辞書 (`tags`, `decision_tags`) へも自動登録し、従来の CSV フォーマットとの互換性を維持しています。

@@ -11,6 +11,7 @@ from sqlalchemy import (
     Index,
     Integer,
     Text,
+    UniqueConstraint,
     text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -36,6 +37,9 @@ class Org(Base):
         back_populates="org", cascade="all, delete-orphan"
     )
     audit_logs: Mapped[List["AuditLog"]] = relationship(back_populates="org")
+    policy_cases: Mapped[List["PolicyCase"]] = relationship(
+        back_populates="org", cascade="all, delete-orphan"
+    )
 
 
 class User(Base):
@@ -59,6 +63,15 @@ class User(Base):
     sessions: Mapped[List["SessionRecord"]] = relationship(back_populates="user")
     decisions: Mapped[List["Decision"]] = relationship(back_populates="decided_by_user")
     audit_logs: Mapped[List["AuditLog"]] = relationship(back_populates="user")
+    created_policy_cases: Mapped[List["PolicyCase"]] = relationship(
+        back_populates="created_by_user"
+    )
+    created_options: Mapped[List["Option"]] = relationship(
+        back_populates="created_by_user"
+    )
+    created_option_versions: Mapped[List["OptionVersion"]] = relationship(
+        back_populates="created_by_user"
+    )
 
 
 class SessionRecord(Base):
@@ -120,6 +133,103 @@ class Candidate(Base):
     decisions: Mapped[List["Decision"]] = relationship(
         back_populates="candidate", cascade="all, delete-orphan"
     )
+    options: Mapped[List["Option"]] = relationship(back_populates="candidate")
+
+
+class PolicyCase(Base):
+    __tablename__ = "policy_cases"
+    __table_args__ = (
+        CheckConstraint(
+            "visibility IN ('private','org','public')",
+            name="ck_policy_cases_visibility",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    org_id: Mapped[int] = mapped_column(ForeignKey("orgs.id"), nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    purpose: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    background: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    constraints: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    kpis: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    stakeholders: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    visibility: Mapped[str] = mapped_column(Text, nullable=False, server_default="org")
+    created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=UTC_NOW
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=UTC_NOW,
+        server_onupdate=UTC_NOW,
+    )
+
+    org: Mapped[Org] = relationship(back_populates="policy_cases")
+    created_by_user: Mapped[Optional[User]] = relationship(back_populates="created_policy_cases")
+    options: Mapped[List["Option"]] = relationship(
+        back_populates="policy_case", cascade="all, delete-orphan"
+    )
+
+
+class Option(Base):
+    __tablename__ = "options"
+    __table_args__ = (
+        CheckConstraint(
+            "visibility IN ('private','org','public')",
+            name="ck_options_visibility",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    policy_case_id: Mapped[int] = mapped_column(
+        ForeignKey("policy_cases.id"), nullable=False
+    )
+    candidate_id: Mapped[Optional[int]] = mapped_column(ForeignKey("candidates.id"), nullable=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    visibility: Mapped[str] = mapped_column(Text, nullable=False, server_default="org")
+    created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=UTC_NOW
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=UTC_NOW,
+        server_onupdate=UTC_NOW,
+    )
+
+    policy_case: Mapped[PolicyCase] = relationship(back_populates="options")
+    candidate: Mapped[Optional[Candidate]] = relationship(back_populates="options")
+    created_by_user: Mapped[Optional[User]] = relationship(back_populates="created_options")
+    versions: Mapped[List["OptionVersion"]] = relationship(
+        back_populates="option", cascade="all, delete-orphan"
+    )
+
+
+class OptionVersion(Base):
+    __tablename__ = "option_versions"
+    __table_args__ = (
+        UniqueConstraint(
+            "option_id",
+            "version_number",
+            name="uq_option_versions_option_version",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    option_id: Mapped[int] = mapped_column(ForeignKey("options.id"), nullable=False)
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    change_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=UTC_NOW
+    )
+
+    option: Mapped[Option] = relationship(back_populates="versions")
+    created_by_user: Mapped[Optional[User]] = relationship(back_populates="created_option_versions")
 
 
 class Decision(Base):
@@ -147,6 +257,9 @@ class Decision(Base):
     rationales: Mapped[List["Rationale"]] = relationship(
         back_populates="decision", cascade="all, delete-orphan"
     )
+    decision_tags: Mapped[List["DecisionTag"]] = relationship(
+        back_populates="decision", cascade="all, delete-orphan"
+    )
 
 
 class Rationale(Base):
@@ -163,6 +276,46 @@ class Rationale(Base):
     )
 
     decision: Mapped[Decision] = relationship(back_populates="rationales")
+
+
+class Tag(Base):
+    __tablename__ = "tags"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    label: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=UTC_NOW
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=UTC_NOW,
+        server_onupdate=UTC_NOW,
+    )
+
+    decision_links: Mapped[List["DecisionTag"]] = relationship(
+        back_populates="tag", cascade="all, delete-orphan"
+    )
+
+
+class DecisionTag(Base):
+    __tablename__ = "decision_tags"
+    __table_args__ = (
+        UniqueConstraint("decision_id", "tag_id", name="uq_decision_tags_decision_tag"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    decision_id: Mapped[int] = mapped_column(ForeignKey("decisions.id"), nullable=False)
+    tag_id: Mapped[int] = mapped_column(ForeignKey("tags.id"), nullable=False)
+    applied_label: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=UTC_NOW
+    )
+
+    decision: Mapped[Decision] = relationship(back_populates="decision_tags")
+    tag: Mapped[Tag] = relationship(back_populates="decision_links")
 
 
 class AuditLog(Base):

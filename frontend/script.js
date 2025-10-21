@@ -5,7 +5,13 @@ class PolicyBudgetSimulator {
         this.similarProjects = [];
         this.latestAnalysis = null;
         this.currentTab = 'all';
+        // 旧API（分析・履歴）
         this.apiBaseUrl = 'http://127.0.0.1:8000';
+        // 新API（ケース/案/版）
+        this.newApiBaseUrl = 'http://127.0.0.1:8001';
+        // デモ用に Org/User を固定する（本番はログイン情報から取得）
+        this.defaultOrgId = 1; // 必要に応じて変更
+        this.defaultUserId = null; // 未ログイン環境では null のまま
         this.budgetInsights = null;
         this.serverEstimatedBudget = null;
         this.proposedBudget = null;
@@ -48,6 +54,13 @@ class PolicyBudgetSimulator {
             });
         }
 
+        const saveAsOptionBtn = document.getElementById('saveAsOptionBtn');
+        if (saveAsOptionBtn) {
+            saveAsOptionBtn.addEventListener('click', () => {
+                this.saveAsOption();
+            });
+        }
+
         document.querySelectorAll('.tab-btn').forEach((btn) => {
             btn.addEventListener('click', (event) => {
                 const target = event.currentTarget;
@@ -64,6 +77,79 @@ class PolicyBudgetSimulator {
                 this.closeModal();
             }
         });
+    }
+
+    // ===== 新API 連携（ケース/案/版） =====
+    async saveAsOption() {
+        if (!this.currentInput) {
+            this.showToast('まず分析を実行してください', 'error');
+            return;
+        }
+        if (!Number.isInteger(this.defaultOrgId)) {
+            this.showToast('Org ID が未設定です（frontend/script.js 内 defaultOrgId）', 'error');
+            return;
+        }
+
+        try {
+            // 1) ケース作成（最小項目）
+            const casePayload = {
+                org_id: this.defaultOrgId,
+                title: this.currentInput.projectName || '無題のケース',
+                purpose: this.currentInput.currentSituation || '',
+                visibility: 'org',
+                created_by: this.defaultUserId,
+            };
+            const caseRes = await fetch(`${this.newApiBaseUrl}/api/v1/cases`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(casePayload),
+            });
+            if (!caseRes.ok) {
+                const err = await caseRes.json().catch(() => ({}));
+                throw new Error(`ケース作成に失敗: ${err.detail || caseRes.statusText}`);
+            }
+            const policyCase = await caseRes.json();
+
+            // 2) 案（Option）を v1 として作成
+            const summary = (this.currentInput.projectOverview || '').trim();
+            const bodyParts = [
+                `【現状・目的】\n${this.currentInput.currentSituation || ''}`,
+                `\n\n【事業概要】\n${this.currentInput.projectOverview || ''}`,
+            ];
+            if (Array.isArray(this.similarProjects) && this.similarProjects.length > 0) {
+                const lines = this.similarProjects.slice(0, 5).map((p, i) => {
+                    const name = p?.project_name || '名称不明';
+                    const sim = typeof p?.similarity === 'number' ? p.similarity.toFixed(3) : '---';
+                    return `${i + 1}. ${name} (sim=${sim})`;
+                });
+                bodyParts.push(`\n\n【参考・類似事業（上位）】\n${lines.join('\n')}`);
+            }
+            const optionPayload = {
+                policy_case_id: policyCase.id,
+                candidate_id: null,
+                title: this.currentInput.projectName || '無題の案',
+                summary: summary.slice(0, 200) || null,
+                body: bodyParts.join(''),
+                change_note: '初回ドラフト',
+                created_by: this.defaultUserId,
+                visibility: 'org',
+            };
+            const optRes = await fetch(`${this.newApiBaseUrl}/api/v1/options`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(optionPayload),
+            });
+            if (!optRes.ok) {
+                const err = await optRes.json().catch(() => ({}));
+                throw new Error(`案の作成に失敗: ${err.detail || optRes.statusText}`);
+            }
+            const option = await optRes.json();
+
+            this.showToast(`ケース#${policyCase.id} に案#${option.id} (v${option.latest_version_number}) を保存しました`, 'success');
+        } catch (e) {
+            console.error(e);
+            this.showToast(e.message || '新APIへの保存に失敗しました', 'error');
+        }
     }
 
     sanitizeHTML(text) {
