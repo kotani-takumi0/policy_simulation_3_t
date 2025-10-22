@@ -46,20 +46,13 @@ make dev  # uvicorn backend.app.main:app --reload
 - `http://127.0.0.1:8000/healthz` が `{"status": "ok"}` を返せば準備完了です。
 - フェーズ1で `PolicyCase` / `Option` / `OptionVersion` / タグ辞書に加え、分析 API (`/api/v1/analyses` など旧来のエンドポイント) も統合済みです。
 
-### レガシーバックエンド（凍結中・任意）
-旧エンドポイントが必要な場合のみ起動してください。
-```bash
-cd backend
-uvicorn main:app --reload --port 8001
-```
-※ 新バックエンドが分析・履歴保存を引き継いだため、通常運用では不要です。
-
 ### フロントエンド
 ```bash
 cd frontend
 python -m http.server 5500
 ```
 - ブラウザで `http://127.0.0.1:5500` にアクセスします。
+- 画面から呼び出す API の既定値は `http://127.0.0.1:8000` です。`?apiBaseUrl=https://example.com` を付与するか、`config.js` から `window.__APP_CONFIG__ = { apiBaseUrl: "..." }` を定義することで環境ごとに上書きできます。
 
 ## データベースとマイグレーション
 - Alembic でスキーマ管理します。フェーズ1では `policy_cases`, `options`, `option_versions`, `tags`, `decision_tags`, `analysis_history` が追加されています。
