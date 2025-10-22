@@ -52,7 +52,7 @@ cd frontend
 python -m http.server 5500
 ```
 - ブラウザで `http://127.0.0.1:5500` にアクセスします。
-- 画面から呼び出す API の既定値は `http://127.0.0.1:8000` です。`?apiBaseUrl=https://example.com` を付与するか、`config.js` から `window.__APP_CONFIG__ = { apiBaseUrl: "..." }` を定義することで環境ごとに上書きできます。
+- 画面から呼び出す API の既定値は、表示しているホストを基に `:8000` を組み合わせた URL です（例: `http://localhost:8000`）。`?apiBaseUrl=https://example.com` を付与するか、ページ読込前に `window.__APP_CONFIG__ = { apiBaseUrl: "..." }` を定義することで環境ごとに上書きできます。`?apiBaseUrl=reset` でローカルストレージの設定をクリアできます。
 
 ## データベースとマイグレーション
 - Alembic でスキーマ管理します。フェーズ1では `policy_cases`, `options`, `option_versions`, `tags`, `decision_tags`, `analysis_history` が追加されています。

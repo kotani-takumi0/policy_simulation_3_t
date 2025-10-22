@@ -29,6 +29,7 @@ class HistoryPage {
         const resolvedBaseUrl = resolveBaseUrl() || fallbackBaseUrl;
 
         this.apiBaseUrl = resolvedBaseUrl;
+        console.info(`[history] Using API base URL: ${this.apiBaseUrl}`);
         this.historyListEl = document.getElementById('historyList');
         this.statusEl = document.getElementById('historyStatus');
         this.init();

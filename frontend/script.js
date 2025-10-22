@@ -1,3 +1,5 @@
+window.app = window.app || null;
+
 // アプリケーションのメインクラス
 class PolicyBudgetSimulator {
     constructor() {
@@ -15,6 +17,7 @@ class PolicyBudgetSimulator {
         // バックエンドのベースURL（分析・保存・ケース管理を統合）
         this.apiBaseUrl = resolvedBaseUrl;
         this.newApiBaseUrl = resolvedBaseUrl;
+        console.info(`[app] Using API base URL: ${this.apiBaseUrl}`);
         // デモ用に Org/User を固定する（本番はログイン情報から取得）
         this.defaultOrgId = 1; // 必要に応じて変更
         this.defaultUserId = null; // 未ログイン環境では null のまま
