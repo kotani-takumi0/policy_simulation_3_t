@@ -21,7 +21,14 @@ function buildRsSystemUrl(project) {
 
 class HistoryPage {
     constructor() {
-        this.apiBaseUrl = 'http://127.0.0.1:8001';
+        const fallbackBaseUrl = "http://127.0.0.1:8000";
+        const resolveBaseUrl =
+            typeof window !== "undefined" && typeof window.getApiBaseUrl === "function"
+                ? window.getApiBaseUrl
+                : () => fallbackBaseUrl;
+        const resolvedBaseUrl = resolveBaseUrl() || fallbackBaseUrl;
+
+        this.apiBaseUrl = resolvedBaseUrl;
         this.historyListEl = document.getElementById('historyList');
         this.statusEl = document.getElementById('historyStatus');
         this.init();
