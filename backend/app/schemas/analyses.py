@@ -46,6 +46,7 @@ class HistoryItemResponse(BaseModel):
     estimatedBudget: Optional[float]
     createdAt: datetime
     references: list[dict[str, Any]]
+    linkedOptionId: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)  # type: ignore
 
@@ -56,4 +57,3 @@ __all__ = [
     "SaveAnalysisRequest",
     "HistoryItemResponse",
 ]
-

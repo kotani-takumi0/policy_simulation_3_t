@@ -4,9 +4,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from backend.app.db.deps import get_db
-from backend.app.db.models import Org, PolicyCase, User
+from backend.app.db.models import Criterion, Org, PolicyCase, User
 from backend.app.schemas.cases import PolicyCaseCreate, PolicyCaseDetailResponse, PolicyCaseResponse
-from backend.app.schemas.options import OptionSummaryResponse
+from backend.app.schemas.options import (
+    CriterionCreate,
+    CriterionResponse,
+    OptionSummaryResponse,
+)
 
 router = APIRouter(prefix="/api/v1/cases", tags=["cases"])
 
@@ -51,6 +55,39 @@ def create_policy_case(payload: PolicyCaseCreate, db: Session = Depends(get_db))
     return PolicyCaseResponse.from_orm(policy_case)
 
 
+@router.get("/{case_id}/criteria", response_model=list[CriterionResponse])
+def list_criteria(case_id: int, db: Session = Depends(get_db)) -> list[CriterionResponse]:
+    policy_case = db.get(PolicyCase, case_id)
+    if policy_case is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Policy case not found")
+    return [
+        CriterionResponse.from_orm(criterion)
+        for criterion in sorted(policy_case.criteria, key=lambda c: c.created_at)
+    ]
+
+
+@router.post("/{case_id}/criteria", response_model=CriterionResponse, status_code=status.HTTP_201_CREATED)
+def create_criterion(
+    case_id: int,
+    payload: CriterionCreate,
+    db: Session = Depends(get_db),
+) -> CriterionResponse:
+    policy_case = db.get(PolicyCase, case_id)
+    if policy_case is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Policy case not found")
+
+    criterion = Criterion(
+        policy_case_id=policy_case.id,
+        name=payload.name,
+        description=payload.description,
+        weight=payload.weight,
+    )
+    db.add(criterion)
+    db.commit()
+    db.refresh(criterion)
+    return CriterionResponse.from_orm(criterion)
+
+
 @router.get("/{case_id}", response_model=PolicyCaseDetailResponse)
 def get_policy_case(case_id: int, db: Session = Depends(get_db)) -> PolicyCaseDetailResponse:
     policy_case = db.get(PolicyCase, case_id)
@@ -71,10 +108,12 @@ def get_policy_case(case_id: int, db: Session = Depends(get_db)) -> PolicyCaseDe
                 title=option.title,
                 summary=option.summary,
                 visibility=option.visibility,
+                status=option.status,  # type: ignore[arg-type]
                 created_by=option.created_by,
                 created_at=option.created_at,
                 updated_at=option.updated_at,
                 latest_version_number=latest_version,
+                analysis_history_id=option.analysis_history_id,
             )
         )
 

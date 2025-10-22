@@ -98,6 +98,7 @@ def _serialize_history(item: AnalysisHistory) -> HistoryItemResponse:
         estimatedBudget=item.estimated_budget,
         createdAt=item.created_at,
         references=references,
+        linkedOptionId=item.linked_option.id if item.linked_option else None,
     )
 
 

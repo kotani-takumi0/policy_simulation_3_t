@@ -72,6 +72,12 @@ class User(Base):
     created_option_versions: Mapped[List["OptionVersion"]] = relationship(
         back_populates="created_by_user"
     )
+    assessments: Mapped[List["Assessment"]] = relationship(back_populates="assessed_by_user")
+    evidences: Mapped[List["Evidence"]] = relationship(back_populates="created_by_user")
+    reviews: Mapped[List["Review"]] = relationship(back_populates="reviewer")
+    workflow_transitions: Mapped[List["WorkflowTransition"]] = relationship(
+        back_populates="changed_by_user"
+    )
 
 
 class SessionRecord(Base):
@@ -170,6 +176,9 @@ class PolicyCase(Base):
     options: Mapped[List["Option"]] = relationship(
         back_populates="policy_case", cascade="all, delete-orphan"
     )
+    criteria: Mapped[List["Criterion"]] = relationship(
+        back_populates="policy_case", cascade="all, delete-orphan"
+    )
 
 
 class Option(Base):
@@ -178,6 +187,10 @@ class Option(Base):
         CheckConstraint(
             "visibility IN ('private','org','public')",
             name="ck_options_visibility",
+        ),
+        CheckConstraint(
+            "status IN ('draft','in_review','approved','published','archived')",
+            name="ck_options_status",
         ),
     )
 
@@ -189,6 +202,10 @@ class Option(Base):
     title: Mapped[str] = mapped_column(Text, nullable=False)
     summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     visibility: Mapped[str] = mapped_column(Text, nullable=False, server_default="org")
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="draft")
+    analysis_history_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("analysis_history.id"), nullable=True, unique=True
+    )
     created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=UTC_NOW
@@ -203,7 +220,17 @@ class Option(Base):
     policy_case: Mapped[PolicyCase] = relationship(back_populates="options")
     candidate: Mapped[Optional[Candidate]] = relationship(back_populates="options")
     created_by_user: Mapped[Optional[User]] = relationship(back_populates="created_options")
+    analysis_history: Mapped[Optional["AnalysisHistory"]] = relationship(
+        back_populates="linked_option",
+        foreign_keys="Option.analysis_history_id",
+    )
     versions: Mapped[List["OptionVersion"]] = relationship(
+        back_populates="option", cascade="all, delete-orphan"
+    )
+    workflow_transitions: Mapped[List["WorkflowTransition"]] = relationship(
+        back_populates="option", cascade="all, delete-orphan"
+    )
+    reviews: Mapped[List["Review"]] = relationship(
         back_populates="option", cascade="all, delete-orphan"
     )
 
@@ -230,6 +257,13 @@ class OptionVersion(Base):
 
     option: Mapped[Option] = relationship(back_populates="versions")
     created_by_user: Mapped[Optional[User]] = relationship(back_populates="created_option_versions")
+    evidences: Mapped[List["Evidence"]] = relationship(
+        back_populates="option_version", cascade="all, delete-orphan"
+    )
+    assessments: Mapped[List["Assessment"]] = relationship(
+        back_populates="option_version", cascade="all, delete-orphan"
+    )
+    reviews: Mapped[List["Review"]] = relationship(back_populates="option_version")
 
 
 class Decision(Base):
@@ -331,6 +365,143 @@ class AnalysisHistory(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=UTC_NOW
     )
+    linked_option: Mapped[Optional[Option]] = relationship(
+        "Option",
+        back_populates="analysis_history",
+        uselist=False,
+        foreign_keys="Option.analysis_history_id",
+    )
+
+
+class Criterion(Base):
+    __tablename__ = "criteria"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    policy_case_id: Mapped[int] = mapped_column(ForeignKey("policy_cases.id"), nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    weight: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=UTC_NOW
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=UTC_NOW,
+        server_onupdate=UTC_NOW,
+    )
+
+    policy_case: Mapped[PolicyCase] = relationship(
+        back_populates="criteria", cascade="all"
+    )
+    assessments: Mapped[List["Assessment"]] = relationship(
+        back_populates="criterion", cascade="all, delete-orphan"
+    )
+
+
+class Assessment(Base):
+    __tablename__ = "assessments"
+    __table_args__ = (
+        UniqueConstraint(
+            "option_version_id",
+            "criterion_id",
+            name="uq_assessments_option_version_criterion",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    option_version_id: Mapped[int] = mapped_column(ForeignKey("option_versions.id"), nullable=False)
+    criterion_id: Mapped[int] = mapped_column(ForeignKey("criteria.id"), nullable=False)
+    score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    assessed_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    assessed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=UTC_NOW
+    )
+
+    option_version: Mapped[OptionVersion] = relationship(back_populates="assessments")
+    criterion: Mapped[Criterion] = relationship(back_populates="assessments")
+    assessed_by_user: Mapped[Optional[User]] = relationship(back_populates="assessments")
+
+
+class Source(Base):
+    __tablename__ = "sources"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    title: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    publisher: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    credibility: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    content_hash: Mapped[Optional[str]] = mapped_column(Text, nullable=True, unique=True)
+    retrieved_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=UTC_NOW
+    )
+
+    evidences: Mapped[List["Evidence"]] = relationship(
+        back_populates="source", cascade="all, delete-orphan"
+    )
+
+
+class Evidence(Base):
+    __tablename__ = "evidence"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    option_version_id: Mapped[int] = mapped_column(ForeignKey("option_versions.id"), nullable=False)
+    source_id: Mapped[Optional[int]] = mapped_column(ForeignKey("sources.id"), nullable=True)
+    snippet: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    highlight_start: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    highlight_end: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=UTC_NOW
+    )
+
+    option_version: Mapped[OptionVersion] = relationship(back_populates="evidences")
+    source: Mapped[Optional[Source]] = relationship(back_populates="evidences")
+    created_by_user: Mapped[Optional[User]] = relationship(back_populates="evidences")
+
+
+class WorkflowTransition(Base):
+    __tablename__ = "workflow_transitions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    option_id: Mapped[int] = mapped_column(ForeignKey("options.id"), nullable=False)
+    from_status: Mapped[str] = mapped_column(Text, nullable=False)
+    to_status: Mapped[str] = mapped_column(Text, nullable=False)
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    changed_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    changed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=UTC_NOW
+    )
+
+    option: Mapped[Option] = relationship(back_populates="workflow_transitions")
+    changed_by_user: Mapped[Optional[User]] = relationship(back_populates="workflow_transitions")
+
+
+class Review(Base):
+    __tablename__ = "reviews"
+    __table_args__ = (
+        CheckConstraint(
+            "outcome IN ('comment','approve','request_changes')",
+            name="ck_reviews_outcome",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    option_id: Mapped[int] = mapped_column(ForeignKey("options.id"), nullable=False)
+    option_version_id: Mapped[int] = mapped_column(ForeignKey("option_versions.id"), nullable=False)
+    reviewer_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    outcome: Mapped[str] = mapped_column(Text, nullable=False, server_default="comment")
+    comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=UTC_NOW
+    )
+
+    option: Mapped[Option] = relationship(back_populates="reviews")
+    option_version: Mapped[OptionVersion] = relationship(back_populates="reviews")
+    reviewer: Mapped[Optional[User]] = relationship(back_populates="reviews")
 
 
 class AuditLog(Base):
