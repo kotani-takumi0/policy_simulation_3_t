@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>政策立案予算シミュレーションアプリ</title>
+    <title>Policy Seed</title>
     <link rel="stylesheet" href="styles.css?v=20241025">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
@@ -13,39 +13,70 @@
         <div class="header-content">
             <h1 class="app-title">
                 <i class="fas fa-chart-line"></i>
-                政策立案予算シミュレーション
+                Policy Seed
             </h1>
-            <div class="header-actions">
-                <button class="btn btn-primary" id="newProjectBtn">
-                    <i class="fas fa-plus"></i> 新規作成
+                <button class="hamburger-button" id="headerMenuToggle" aria-label="メニューを開く" aria-expanded="false" aria-controls="headerSideMenu">
+                    <span></span>
+                    <span></span>
+                    <span></span>
                 </button>
-                <button class="btn btn-outline" id="historyBtn">
-                    <i class="fas fa-list"></i> 分析ログ一覧
-                </button>
-                <button class="btn btn-secondary" id="saveBtn">
-                    <i class="fas fa-save"></i> 保存
-                </button>
-                <button class="btn btn-primary" id="saveAsOptionBtn" title="ケース/案として保存">
-                    <i class="fas fa-lightbulb"></i> 案として保存
-                </button>
-                <button class="btn btn-primary" id="exportBtn">
-                    <i class="fas fa-download"></i> データ出力
-                </button>
-                <div class="auth-controls">
-                    <span class="user-label" id="loginStatus">未ログイン</span>
-                    <button class="btn btn-outline" id="registerBtn">
-                        <i class="fas fa-user-plus"></i> 新規登録
-                    </button>
-                    <button class="btn btn-outline" id="loginBtn">
-                        <i class="fas fa-user"></i> ログイン
-                    </button>
-                    <button class="btn btn-secondary" id="logoutBtn" style="display: none;">
-                        <i class="fas fa-right-from-bracket"></i> ログアウト
-                    </button>
-                </div>
-            </div>
+            </nav>
         </div>
     </header>
+
+    <div class="menu-overlay" id="headerMenuOverlay" aria-hidden="true"></div>
+    <nav class="side-menu" id="headerSideMenu" aria-hidden="true">
+        <div class="side-menu-inner">
+            <div class="side-menu-header">
+                <h2 class="side-menu-title">メニュー</h2>
+                <button class="side-menu-close" type="button" data-menu-close aria-label="メニューを閉じる">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <ul class="side-menu-list">
+                <li>
+                    <button class="btn btn-primary" id="newProjectBtn" data-menu-close>
+                        <i class="fas fa-plus"></i> 新規作成
+                    </button>
+                </li>
+                <li>
+                    <button class="btn btn-outline" id="historyBtn" data-menu-close>
+                        <i class="fas fa-list"></i> 分析ログ一覧
+                    </button>
+                </li>
+                <li>
+                    <button class="btn btn-secondary" id="saveBtn" data-menu-close>
+                        <i class="fas fa-save"></i> 保存
+                    </button>
+                </li>
+                <li>
+                    <button class="btn btn-primary" id="saveAsOptionBtn" title="ケース/案として保存" data-menu-close>
+                        <i class="fas fa-lightbulb"></i> 案として保存
+                    </button>
+                </li>
+                <li>
+                    <button class="btn btn-primary" id="exportBtn" data-menu-close>
+                        <i class="fas fa-download"></i> データ出力
+                    </button>
+                </li>
+            </ul>
+            <div class="auth-controls">
+                <span class="user-label">
+                    <i class="fas fa-user-circle"></i>
+                    <span data-auth-status>未ログイン</span>
+                </span>
+                <button class="btn btn-outline" id="registerBtn" data-menu-close>
+                    <i class="fas fa-user-plus"></i> 新規登録
+                </button>
+                <button class="btn btn-outline" id="loginBtn" data-menu-close>
+                    <i class="fas fa-user"></i> ログイン
+                </button>
+                <button class="btn btn-secondary" id="logoutBtn" style="display: none;" data-menu-close>
+                    <i class="fas fa-right-from-bracket"></i> ログアウト
+                </button>
+            </div>
+        </div>
+    </nav>
 
     <!-- メインコンテンツエリア -->
     <main class="main-content">
@@ -72,25 +103,6 @@
                     </div>
                 </div>
 
-                <div class="kpi-card" id="budgetComparisonCard">
-                    <div class="kpi-icon">
-                        <i class="fas fa-balance-scale"></i>
-                    </div>
-                    <div class="kpi-content">
-                        <h3>予算比較（過不足）</h3>
-                        <p class="kpi-value" id="budgetComparisonValue">¥0</p>
-                    </div>
-                </div>
-
-                <div class="kpi-card" id="similarProjectsCard">
-                    <div class="kpi-icon">
-                        <i class="fas fa-project-diagram"></i>
-                    </div>
-                    <div class="kpi-content">
-                        <h3>類似事業件数</h3>
-                        <p class="kpi-value" id="similarProjectsValue">0件</p>
-                    </div>
-                </div>
             </div>
         </section>
 
@@ -199,6 +211,20 @@
                             <i class="fas fa-chart-area"></i>
                             <p>分析を実行すると、入力内容と類似事業のサマリーが表示されます</p>
                         </div>
+                    </div>
+
+                    <div class="data-distribution-report">
+                        <h3>予算分布の概要（上位50件・加重箱ひげ）</h3>
+                        <div class="distribution-container">
+                            <canvas id="budgetDistributionCanvas"></canvas>
+                            <div id="distributionPlaceholder" class="distribution-placeholder">
+                                <i class="fas fa-chart-bar"></i>
+                                <p>分析を実行すると、類似事業の予算分布がここに表示されます</p>
+                            </div>
+                        </div>
+                        <p id="distributionSummary" class="muted distribution-summary-text">
+                            有効な類似事業が少ないため、分布をまだプロットできません。
+                        </p>
                     </div>
                 </div>
             </section>

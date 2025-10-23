@@ -133,7 +133,7 @@ def analyze_similarity(query_vec_1: np.ndarray, query_vec_2: np.ndarray):
         raise Exception("データがロードされていません。'load_data_and_vectors'を先に実行してください。")
 
     # ハイパーパラメータ
-    TOPK = 5
+    TOPK = 50
     TAU = 0.08
     ALPHA, BETA = 0.5, 0.5
 

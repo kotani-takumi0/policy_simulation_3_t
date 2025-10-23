@@ -33,6 +33,18 @@ class PolicyBudgetSimulator {
         this.currentOptionVersionId = null;
         this.currentCaseId = null;
         this.criteria = [];
+        this.distributionCanvas = null;
+        this.distributionCtx = null;
+        this.distributionPlaceholder = null;
+        this.distributionSummaryEl = null;
+        this.distributionResizeHandler = null;
+        this.headerMenuToggleEl = null;
+        this.headerMenuOverlayEl = null;
+        this.headerSideMenuEl = null;
+        this.headerMenuKeyHandler = null;
+        this.handleSideMenuToggle = null;
+        this.handleSideMenuOverlayClick = null;
+        this.handleSideMenuContentClick = null;
         this.allowedTransitions = {
             draft: ['in_review'],
             in_review: ['approved', 'draft'],
@@ -48,9 +60,11 @@ class PolicyBudgetSimulator {
         if (this.authManager) {
             this.initializeAuthState();
         }
+        this.initializeDistributionChart();
         this.renderProjectsList();
         this.updateAnalysisSummary();
         this.updateKpiSection();
+        this.updateDistributionSummary();
         this.showToast('初期化が完了しました', 'info');
         this.initializeFromQuery();
     }
@@ -178,7 +192,7 @@ class PolicyBudgetSimulator {
         this.loginBtn = document.getElementById('loginBtn');
         this.logoutBtn = document.getElementById('logoutBtn');
         this.registerBtn = document.getElementById('registerBtn');
-        this.loginStatusLabel = document.getElementById('loginStatus');
+        this.loginStatusLabels = Array.from(document.querySelectorAll('[data-auth-status]'));
         this.loginModalCloseBtn = document.getElementById('loginModalClose');
         this.registerModalBackdrop = document.getElementById('registerModalBackdrop');
         this.registerModalCloseBtn = document.getElementById('registerModalClose');
@@ -266,6 +280,105 @@ class PolicyBudgetSimulator {
                 this.applyAuthState(detail.user || null);
             });
         }
+
+        this.initializeSideMenu();
+    }
+
+    initializeSideMenu() {
+        this.headerMenuToggleEl = document.getElementById('headerMenuToggle');
+        this.headerMenuOverlayEl = document.getElementById('headerMenuOverlay');
+        this.headerSideMenuEl = document.getElementById('headerSideMenu');
+
+        if (!this.headerMenuToggleEl || !this.headerMenuOverlayEl || !this.headerSideMenuEl) {
+            return;
+        }
+
+        this.handleSideMenuToggle = (event) => {
+            event.preventDefault();
+            this.toggleSideMenu();
+        };
+
+        this.handleSideMenuOverlayClick = () => {
+            this.closeSideMenu();
+        };
+
+        this.handleSideMenuContentClick = (event) => {
+            const target = event.target;
+            if (target instanceof HTMLElement && target.closest('[data-menu-close]')) {
+                this.closeSideMenu();
+            }
+        };
+
+        this.headerMenuToggleEl.addEventListener('click', this.handleSideMenuToggle);
+        this.headerMenuOverlayEl.addEventListener('click', this.handleSideMenuOverlayClick);
+        this.headerSideMenuEl.addEventListener('click', this.handleSideMenuContentClick);
+
+        this.headerMenuKeyHandler = (event) => {
+            if (event.key === 'Escape') {
+                this.closeSideMenu();
+            }
+        };
+        document.addEventListener('keydown', this.headerMenuKeyHandler);
+    }
+
+    toggleSideMenu() {
+        if (!this.headerSideMenuEl) {
+            return;
+        }
+        const isOpen = this.headerSideMenuEl.classList.contains('is-open');
+        if (isOpen) {
+            this.closeSideMenu();
+        } else {
+            this.openSideMenu();
+        }
+    }
+
+    openSideMenu() {
+        if (!this.headerMenuToggleEl || !this.headerMenuOverlayEl || !this.headerSideMenuEl) {
+            return;
+        }
+        this.headerSideMenuEl.classList.add('is-open');
+        this.headerMenuOverlayEl.classList.add('is-active');
+        this.headerMenuOverlayEl.setAttribute('aria-hidden', 'false');
+        this.headerMenuToggleEl.classList.add('is-active');
+        this.headerMenuToggleEl.setAttribute('aria-expanded', 'true');
+        this.headerMenuToggleEl.setAttribute('aria-label', 'メニューを閉じる');
+        this.headerSideMenuEl.setAttribute('aria-hidden', 'false');
+        document.body.classList.add('menu-open');
+        const focusable = this.headerSideMenuEl.querySelector('[data-menu-close], button, a, input, select, textarea');
+        if (focusable instanceof HTMLElement && typeof focusable.focus === 'function') {
+            try {
+                focusable.focus({ preventScroll: true });
+            } catch (error) {
+                focusable.focus();
+            }
+        }
+    }
+
+    closeSideMenu() {
+        if (!this.headerMenuToggleEl || !this.headerMenuOverlayEl || !this.headerSideMenuEl) {
+            return;
+        }
+        this.headerSideMenuEl.classList.remove('is-open');
+        this.headerMenuOverlayEl.classList.remove('is-active');
+        this.headerMenuOverlayEl.setAttribute('aria-hidden', 'true');
+        this.headerMenuToggleEl.classList.remove('is-active');
+        this.headerMenuToggleEl.setAttribute('aria-expanded', 'false');
+        this.headerMenuToggleEl.setAttribute('aria-label', 'メニューを開く');
+        this.headerSideMenuEl.setAttribute('aria-hidden', 'true');
+        document.body.classList.remove('menu-open');
+
+        if (
+            document.activeElement &&
+            this.headerSideMenuEl.contains(document.activeElement) &&
+            typeof this.headerMenuToggleEl.focus === 'function'
+        ) {
+            try {
+                this.headerMenuToggleEl.focus({ preventScroll: true });
+            } catch (error) {
+                this.headerMenuToggleEl.focus();
+            }
+        }
     }
 
     async initializeAuthState() {
@@ -285,9 +398,7 @@ class PolicyBudgetSimulator {
         if (user && Number.isInteger(user.org_id)) {
             this.defaultOrgId = user.org_id;
             this.defaultUserId = user.id;
-            if (this.loginStatusLabel) {
-                this.loginStatusLabel.textContent = `${user.email} (${user.role})`;
-            }
+            this.updateAuthStatusLabels(`${user.email} (${user.role})`);
             if (this.loginBtn) {
                 this.loginBtn.style.display = "none";
             }
@@ -300,9 +411,7 @@ class PolicyBudgetSimulator {
         } else {
             this.defaultOrgId = null;
             this.defaultUserId = null;
-            if (this.loginStatusLabel) {
-                this.loginStatusLabel.textContent = "未ログイン";
-            }
+            this.updateAuthStatusLabels("未ログイン");
             if (this.loginBtn) {
                 this.loginBtn.style.display = "inline-flex";
             }
@@ -313,6 +422,17 @@ class PolicyBudgetSimulator {
                 this.logoutBtn.style.display = "none";
             }
         }
+    }
+
+    updateAuthStatusLabels(text) {
+        if (!Array.isArray(this.loginStatusLabels)) {
+            return;
+        }
+        this.loginStatusLabels.forEach((label) => {
+            if (label instanceof HTMLElement) {
+                label.textContent = text;
+            }
+        });
     }
 
     openLoginModal() {
@@ -725,6 +845,7 @@ class PolicyBudgetSimulator {
             this.renderProjectsList();
             this.updateAnalysisSummary();
             this.updateKpiSection();
+            this.updateDistributionSummary();
 
             const successMessage = analysisResult.history_id
                 ? `分析を完了し、ログID ${analysisResult.history_id} に保存しました`
@@ -878,6 +999,528 @@ class PolicyBudgetSimulator {
             missingCount: Math.max(totalProjects - totalItems, 0),
             usedWeights: weightSum > 0,
         };
+    }
+
+    initializeDistributionChart() {
+        const canvas = document.getElementById('budgetDistributionCanvas');
+        if (!canvas) {
+            return;
+        }
+
+        if (this.distributionCanvas !== canvas) {
+            this.distributionCanvas = canvas;
+            this.distributionCtx = canvas.getContext('2d');
+        }
+
+        this.distributionPlaceholder = document.getElementById('distributionPlaceholder');
+        this.distributionSummaryEl = document.getElementById('distributionSummary');
+
+        if (!this.distributionResizeHandler) {
+            this.distributionResizeHandler = () => {
+                this.resizeDistributionCanvas();
+                this.updateDistributionSummary();
+            };
+            window.addEventListener('resize', this.distributionResizeHandler);
+        }
+
+        this.resizeDistributionCanvas();
+    }
+
+    resizeDistributionCanvas() {
+        if (!this.distributionCanvas || !this.distributionCtx) {
+            return;
+        }
+
+        const ratio = window.devicePixelRatio || 1;
+        const displayWidth = this.distributionCanvas.clientWidth || this.distributionCanvas.offsetWidth;
+        const displayHeight = this.distributionCanvas.clientHeight || this.distributionCanvas.offsetHeight;
+        if (displayWidth === 0 || displayHeight === 0) {
+            return;
+        }
+
+        const targetWidth = Math.max(1, Math.round(displayWidth * ratio));
+        const targetHeight = Math.max(1, Math.round(displayHeight * ratio));
+
+        if (this.distributionCanvas.width !== targetWidth || this.distributionCanvas.height !== targetHeight) {
+            this.distributionCanvas.width = targetWidth;
+            this.distributionCanvas.height = targetHeight;
+        }
+
+        this.distributionCtx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    }
+
+    resetDistributionSummary() {
+        if (!this.distributionCanvas || !this.distributionCtx) {
+            this.initializeDistributionChart();
+        }
+        if (!this.distributionCanvas || !this.distributionCtx) {
+            return;
+        }
+
+        this.distributionCtx.save();
+        this.distributionCtx.setTransform(1, 0, 0, 1, 0, 0);
+        this.distributionCtx.clearRect(0, 0, this.distributionCanvas.width, this.distributionCanvas.height);
+        this.distributionCtx.restore();
+
+        if (this.distributionPlaceholder) {
+            this.distributionPlaceholder.style.display = 'flex';
+        }
+        if (this.distributionSummaryEl) {
+            this.distributionSummaryEl.textContent =
+                '有効な類似事業が少ないため、分布をまだプロットできません。';
+        }
+    }
+
+    updateDistributionSummary(limit = 50) {
+        if (!this.distributionCanvas || !this.distributionCtx) {
+            this.initializeDistributionChart();
+        }
+        if (!this.distributionCanvas || !this.distributionCtx) {
+            return;
+        }
+
+        this.resizeDistributionCanvas();
+
+        if (!Array.isArray(this.similarProjects) || this.similarProjects.length === 0) {
+            this.resetDistributionSummary();
+            return;
+        }
+
+        const stats = this.computeWeightedDistributionStats(this.similarProjects, limit);
+        if (!stats) {
+            this.resetDistributionSummary();
+            return;
+        }
+
+        if (this.distributionPlaceholder) {
+            this.distributionPlaceholder.style.display = 'none';
+        }
+
+        this.drawDistributionChart(stats);
+
+        if (this.distributionSummaryEl) {
+            this.distributionSummaryEl.textContent = this.buildDistributionSummaryText(stats);
+        }
+    }
+
+    computeWeightedDistributionStats(projects, limit = 50) {
+        if (!Array.isArray(projects) || projects.length === 0) {
+            return null;
+        }
+
+        const validProjects = projects.filter(
+            (project) =>
+                project &&
+                typeof project.budget === 'number' &&
+                Number.isFinite(project.budget) &&
+                project.budget > 0
+        );
+
+        if (validProjects.length < 3) {
+            return null;
+        }
+
+        const sortedBySimilarity = [...validProjects].sort((a, b) => {
+            const simA = typeof a.similarity === 'number' ? a.similarity : -Infinity;
+            const simB = typeof b.similarity === 'number' ? b.similarity : -Infinity;
+            return simB - simA;
+        });
+
+        const limitSize = Math.max(1, limit);
+        const limited = sortedBySimilarity.slice(0, limitSize);
+
+        const tau = 0.08;
+        const similarityValues = limited.map((project) =>
+            typeof project.similarity === 'number' ? project.similarity : 0
+        );
+        const weightVector = this.softmax(similarityValues, tau);
+
+        let weightedItems = limited.map((project, index) => ({
+            project,
+            budget: project.budget,
+            weight: weightVector[index],
+        }));
+
+        weightedItems = weightedItems.filter(
+            (item) =>
+                Number.isFinite(item.budget) &&
+                item.budget > 0 &&
+                Number.isFinite(item.weight) &&
+                item.weight > 0
+        );
+
+        if (weightedItems.length < 3) {
+            return null;
+        }
+
+        const totalWeight = weightedItems.reduce((sum, item) => sum + item.weight, 0);
+        if (!(totalWeight > 0)) {
+            return null;
+        }
+
+        const normalizedItems = weightedItems.map((item) => ({
+            ...item,
+            weight: item.weight / totalWeight,
+        }));
+
+        const sortedByBudget = normalizedItems.slice().sort((a, b) => a.budget - b.budget);
+
+        let cumulative = 0;
+        const cdfPoints = [];
+        if (sortedByBudget.length > 0) {
+            cdfPoints.push({ budget: sortedByBudget[0].budget, cumulative: 0 });
+        }
+        sortedByBudget.forEach((item) => {
+            cumulative += item.weight;
+            cdfPoints.push({
+                budget: item.budget,
+                cumulative: Math.min(1, cumulative),
+            });
+        });
+
+        const quantiles = {
+            q10: this.weightedQuantile(sortedByBudget, 0.1),
+            q25: this.weightedQuantile(sortedByBudget, 0.25),
+            q50: this.weightedQuantile(sortedByBudget, 0.5),
+            q75: this.weightedQuantile(sortedByBudget, 0.75),
+            q90: this.weightedQuantile(sortedByBudget, 0.9),
+        };
+
+        if (
+            !Number.isFinite(quantiles.q10) ||
+            !Number.isFinite(quantiles.q25) ||
+            !Number.isFinite(quantiles.q50) ||
+            !Number.isFinite(quantiles.q75) ||
+            !Number.isFinite(quantiles.q90)
+        ) {
+            return null;
+        }
+
+        const weightedMean = sortedByBudget.reduce(
+            (sum, item) => sum + item.budget * item.weight,
+            0
+        );
+
+        const weightSquares = sortedByBudget.reduce(
+            (sum, item) => sum + item.weight * item.weight,
+            0
+        );
+        const effectiveSampleSize = weightSquares > 0 ? 1 / weightSquares : sortedByBudget.length;
+
+        const minBudget = sortedByBudget[0].budget;
+        const maxBudget = sortedByBudget[sortedByBudget.length - 1].budget;
+
+        const axisBaseMin = Math.max(1e-3, Math.min(minBudget, quantiles.q10));
+        const axisBaseMax = Math.max(axisBaseMin * 1.05, Math.max(maxBudget, quantiles.q90));
+        const axisMin = axisBaseMin * 0.85;
+        const axisMax = axisBaseMax * 1.15;
+
+        return {
+            quantiles,
+            weightedMean,
+            effectiveSampleSize,
+            consideredCount: limited.length,
+            validCount: sortedByBudget.length,
+            limit: limitSize,
+            axisMin,
+            axisMax,
+            cdfPoints,
+        };
+    }
+
+    weightedQuantile(sortedItems, quantile) {
+        if (!Array.isArray(sortedItems) || sortedItems.length === 0) {
+            return Number.NaN;
+        }
+
+        const clampedQuantile = Math.min(Math.max(quantile, 0), 1);
+        if (clampedQuantile <= 0) {
+            return sortedItems[0].budget;
+        }
+        if (clampedQuantile >= 1) {
+            return sortedItems[sortedItems.length - 1].budget;
+        }
+
+        let cumulative = 0;
+        for (let index = 0; index < sortedItems.length; index += 1) {
+            const item = sortedItems[index];
+            const nextCumulative = cumulative + item.weight;
+            if (clampedQuantile <= nextCumulative + 1e-12) {
+                if (nextCumulative === cumulative) {
+                    return item.budget;
+                }
+
+                const prevBudget = index === 0 ? item.budget : sortedItems[index - 1].budget;
+                const ratio = (clampedQuantile - cumulative) / (nextCumulative - cumulative);
+                const clampedRatio = Math.min(1, Math.max(0, Number.isFinite(ratio) ? ratio : 0));
+                return prevBudget + (item.budget - prevBudget) * clampedRatio;
+            }
+            cumulative = nextCumulative;
+        }
+
+        return sortedItems[sortedItems.length - 1].budget;
+    }
+
+    softmax(values, tau = 0.08) {
+        if (!Array.isArray(values) || values.length === 0) {
+            return [];
+        }
+
+        const scaled = values.map((value) =>
+            Number.isFinite(value) ? value / tau : 0
+        );
+        const maxValue = Math.max(...scaled);
+        const exps = scaled.map((value) => Math.exp(value - maxValue));
+        const sumExp = exps.reduce((sum, value) => sum + value, 0);
+        if (sumExp === 0) {
+            return values.map(() => 0);
+        }
+        return exps.map((value) => value / sumExp);
+    }
+
+    drawDistributionChart(stats) {
+        if (!this.distributionCanvas || !this.distributionCtx) {
+            return;
+        }
+
+        this.resizeDistributionCanvas();
+
+        const canvas = this.distributionCanvas;
+        const ctx = this.distributionCtx;
+        const ratio = window.devicePixelRatio || 1;
+        const displayWidth = canvas.width / ratio;
+        const displayHeight = canvas.height / ratio;
+
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.restore();
+
+        ctx.save();
+        ctx.scale(ratio, ratio);
+
+        const padding = { top: 24, bottom: 48, left: 80, right: 52 };
+        const chartWidth = displayWidth - padding.left - padding.right;
+        const chartHeight = displayHeight - padding.top - padding.bottom;
+        if (chartWidth <= 0 || chartHeight <= 0) {
+            ctx.restore();
+            return;
+        }
+
+        const axisMin = Math.max(1e-3, stats.axisMin);
+        const axisMax = Math.max(axisMin * 1.001, stats.axisMax);
+        const logMin = Math.log10(axisMin);
+        const logMax = Math.log10(axisMax);
+        const logRange = Math.max(logMax - logMin, 1e-6);
+
+        const valueToY = (value) => {
+            const safeValue = Math.max(value, 1e-3);
+            const logValue = Math.log10(safeValue);
+            const ratioY = (logValue - logMin) / logRange;
+            return padding.top + chartHeight - ratioY * chartHeight;
+        };
+
+        const boxAreaWidth = Math.min(Math.max(chartWidth * 0.45, 140), chartWidth - 80);
+        const boxCenterX = padding.left + boxAreaWidth * 0.5;
+        const boxWidth = Math.min(100, boxAreaWidth * 0.6);
+        const boxLeft = boxCenterX - boxWidth / 2;
+        const boxRight = boxCenterX + boxWidth / 2;
+        const ecdfStartX = Math.min(padding.left + boxAreaWidth + 20, displayWidth - padding.right - 60);
+        const ecdfWidth = Math.max(60, displayWidth - padding.right - ecdfStartX);
+
+        const gridCandidates = [
+            stats.quantiles.q10,
+            stats.quantiles.q25,
+            stats.quantiles.q50,
+            stats.quantiles.q75,
+            stats.quantiles.q90,
+        ].filter((value) => Number.isFinite(value));
+
+        const seenGridKeys = new Set();
+        const uniqueGridValues = [];
+        gridCandidates
+            .sort((a, b) => a - b)
+            .forEach((value) => {
+                const key = Math.round(Math.log10(Math.max(value, 1e-3)) * 100);
+                if (!seenGridKeys.has(key)) {
+                    seenGridKeys.add(key);
+                    uniqueGridValues.push(value);
+                }
+            });
+
+        ctx.strokeStyle = '#e2e8f0';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 5]);
+        uniqueGridValues.forEach((value) => {
+            const y = valueToY(value);
+            if (y < padding.top - 1 || y > padding.top + chartHeight + 1) {
+                return;
+            }
+            ctx.beginPath();
+            ctx.moveTo(padding.left, y);
+            ctx.lineTo(displayWidth - padding.right, y);
+            ctx.stroke();
+        });
+        ctx.setLineDash([]);
+
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(padding.left, padding.top);
+        ctx.lineTo(padding.left, padding.top + chartHeight);
+        ctx.stroke();
+
+        const tickValues = Array.from(
+            new Set([
+                axisMax,
+                ...uniqueGridValues,
+                axisMin,
+            ])
+        ).filter((value) => Number.isFinite(value));
+
+        ctx.fillStyle = '#334155';
+        ctx.font = '12px "Inter", "Noto Sans JP", sans-serif';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        tickValues
+            .sort((a, b) => b - a)
+            .forEach((value) => {
+                const y = valueToY(value);
+                if (y < padding.top - 1 || y > padding.top + chartHeight + 1) {
+                    return;
+                }
+                ctx.beginPath();
+                ctx.moveTo(padding.left - 6, y);
+                ctx.lineTo(padding.left, y);
+                ctx.stroke();
+                ctx.fillText(this.formatCurrency(value), padding.left - 8, y);
+            });
+
+        const q10Y = valueToY(stats.quantiles.q10);
+        const q25Y = valueToY(stats.quantiles.q25);
+        const q50Y = valueToY(stats.quantiles.q50);
+        const q75Y = valueToY(stats.quantiles.q75);
+        const q90Y = valueToY(stats.quantiles.q90);
+        const meanY = valueToY(stats.weightedMean);
+
+        const whiskerCapWidth = Math.min(boxWidth * 0.6, 50);
+
+        ctx.fillStyle = '#bfdbfe';
+        ctx.strokeStyle = '#1d4ed8';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.rect(boxLeft, q75Y, boxWidth, q25Y - q75Y);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.strokeStyle = '#1e3a8a';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(boxLeft, q50Y);
+        ctx.lineTo(boxRight, q50Y);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#2563eb';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(boxCenterX, q90Y);
+        ctx.lineTo(boxCenterX, q75Y);
+        ctx.moveTo(boxCenterX, q25Y);
+        ctx.lineTo(boxCenterX, q10Y);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(boxCenterX - whiskerCapWidth / 2, q90Y);
+        ctx.lineTo(boxCenterX + whiskerCapWidth / 2, q90Y);
+        ctx.moveTo(boxCenterX - whiskerCapWidth / 2, q10Y);
+        ctx.lineTo(boxCenterX + whiskerCapWidth / 2, q10Y);
+        ctx.stroke();
+
+        ctx.fillStyle = '#f97316';
+        ctx.strokeStyle = '#c2410c';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(boxCenterX, meanY, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        const baselineY = padding.top + chartHeight;
+        const ecdfPoints = stats.cdfPoints || [];
+
+        if (ecdfPoints.length > 0) {
+            ctx.fillStyle = 'rgba(124, 58, 237, 0.12)';
+            ctx.beginPath();
+            ctx.moveTo(ecdfStartX, baselineY);
+            ecdfPoints.forEach((point) => {
+                const x = ecdfStartX + Math.min(1, Math.max(0, point.cumulative)) * ecdfWidth;
+                const y = valueToY(point.budget);
+                ctx.lineTo(x, y);
+            });
+            const lastPoint = ecdfPoints[ecdfPoints.length - 1];
+            const lastX = ecdfStartX + Math.min(1, Math.max(0, lastPoint.cumulative)) * ecdfWidth;
+            ctx.lineTo(lastX, baselineY);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.strokeStyle = '#7c3aed';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            let started = false;
+            ecdfPoints.forEach((point) => {
+                const x = ecdfStartX + Math.min(1, Math.max(0, point.cumulative)) * ecdfWidth;
+                const y = valueToY(point.budget);
+                if (!started) {
+                    ctx.moveTo(x, y);
+                    started = true;
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            });
+            ctx.stroke();
+        }
+
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(ecdfStartX, padding.top);
+        ctx.lineTo(ecdfStartX, baselineY);
+        ctx.lineTo(ecdfStartX + ecdfWidth, baselineY);
+        ctx.stroke();
+
+        const probabilityTicks = [0, 0.25, 0.5, 0.75, 1];
+        ctx.fillStyle = '#475569';
+        ctx.font = '11px "Inter", "Noto Sans JP", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        probabilityTicks.forEach((tick) => {
+            const x = ecdfStartX + tick * ecdfWidth;
+            ctx.beginPath();
+            ctx.moveTo(x, baselineY);
+            ctx.lineTo(x, baselineY + 4);
+            ctx.stroke();
+            ctx.fillText(`${Math.round(tick * 100)}%`, x, baselineY + 6);
+        });
+        ctx.fillText('累積割合', ecdfStartX + ecdfWidth / 2, baselineY + 24);
+
+        ctx.restore();
+    }
+
+    buildDistributionSummaryText(stats) {
+        const median = this.formatCurrency(stats.quantiles.q50);
+        const q1 = this.formatCurrency(stats.quantiles.q25);
+        const q3 = this.formatCurrency(stats.quantiles.q75);
+        const q10 = this.formatCurrency(stats.quantiles.q10);
+        const q90 = this.formatCurrency(stats.quantiles.q90);
+        const mean = this.formatCurrency(stats.weightedMean);
+        const effectiveSampleSize = Number.isFinite(stats.effectiveSampleSize)
+            ? stats.effectiveSampleSize.toFixed(1)
+            : '--';
+
+        return [
+            `上位${stats.consideredCount}件（有効 ${stats.validCount}件）を加重集計。`,
+            `中央値 ${median}、IQR ${q1}〜${q3}、10〜90% ${q10}〜${q90}。`,
+            `加重平均 ${mean}、有効サンプルサイズ ≈ ${effectiveSampleSize} 件。`,
+        ].join(' ');
     }
 
     updateKpiSection() {
@@ -1089,6 +1732,7 @@ class PolicyBudgetSimulator {
         this.renderProjectsList();
         this.updateAnalysisSummary();
         this.updateKpiSection();
+        this.resetDistributionSummary();
         this.closeModal();
         this.showToast('入力項目を初期化しました', 'info');
     }
