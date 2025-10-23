@@ -9,3 +9,5 @@ pyarrow
 alembic
 pytest
 httpx
+passlib
+python-jose[cryptography]

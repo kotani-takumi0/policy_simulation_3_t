@@ -7,10 +7,14 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from backend.app.core.security import hash_password
 from backend.app.main import app
 from backend.app.db.base import Base
 from backend.app.db.deps import get_db
 from backend.app.db.models import Org, PolicyCase, User
+
+TEST_USER_EMAIL = "policy.manager@example.com"
+TEST_USER_PASSWORD = "policy-pass-123"
 
 
 @pytest.fixture()
@@ -57,7 +61,8 @@ def seeded_entities(session_factory) -> tuple[int, int]:
         session.add(org)
         session.flush()
 
-        user = User(org_id=org.id, email="policy.manager@example.com", role="admin")
+        user = User(org_id=org.id, email=TEST_USER_EMAIL, role="admin")
+        user.password_hash = hash_password(TEST_USER_PASSWORD)
         session.add(user)
         session.commit()
         return org.id, user.id
@@ -75,13 +80,21 @@ def test_option_workflow_and_reviews(
 ) -> None:
     org_id, user_id = seeded_entities
 
+    login_response = client.post(
+        "/api/v1/auth/login",
+        json={"email": TEST_USER_EMAIL, "password": TEST_USER_PASSWORD},
+    )
+    assert login_response.status_code == 200, login_response.text
+    token = login_response.json()["access_token"]
+    auth_headers = {"Authorization": f"Bearer {token}"}
+
     case_payload = {
         "org_id": org_id,
         "title": "地域DX推進ケース",
         "purpose": "各部門のDX推進方針を整理する",
         "created_by": user_id,
     }
-    case_response = client.post("/api/v1/cases", json=case_payload)
+    case_response = client.post("/api/v1/cases", json=case_payload, headers=auth_headers)
     assert case_response.status_code == 201, case_response.text
     policy_case = case_response.json()
 
@@ -93,7 +106,11 @@ def test_option_workflow_and_reviews(
         "references": [],
         "estimatedBudget": 0,
     }
-    history_response = client.post("/api/v1/save_analysis", json=history_payload)
+    history_response = client.post(
+        "/api/v1/save_analysis",
+        json=history_payload,
+        headers=auth_headers,
+    )
     assert history_response.status_code == 200, history_response.text
     history_id = history_response.json()["id"]
 
@@ -105,7 +122,11 @@ def test_option_workflow_and_reviews(
         "created_by": user_id,
         "analysis_history_id": history_id,
     }
-    option_response = client.post("/api/v1/options", json=option_payload)
+    option_response = client.post(
+        "/api/v1/options",
+        json=option_payload,
+        headers=auth_headers,
+    )
     assert option_response.status_code == 201, option_response.text
     option_detail = option_response.json()
     option_id = option_detail["id"]
@@ -116,6 +137,7 @@ def test_option_workflow_and_reviews(
     criterion_response = client.post(
         f"/api/v1/cases/{policy_case['id']}/criteria",
         json={"name": "実現可能性", "weight": 0.5},
+        headers=auth_headers,
     )
     assert criterion_response.status_code == 201, criterion_response.text
     criterion = criterion_response.json()
@@ -130,6 +152,7 @@ def test_option_workflow_and_reviews(
     assessment_response = client.post(
         f"/api/v1/options/{option_id}/versions/{latest_version_id}/assessments",
         json=assessment_payload,
+        headers=auth_headers,
     )
     assert assessment_response.status_code == 201, assessment_response.text
     option_detail = assessment_response.json()
@@ -143,6 +166,7 @@ def test_option_workflow_and_reviews(
     evidence_response = client.post(
         f"/api/v1/options/{option_id}/versions/{latest_version_id}/evidence",
         json=evidence_payload,
+        headers=auth_headers,
     )
     assert evidence_response.status_code == 201, evidence_response.text
 
@@ -150,6 +174,7 @@ def test_option_workflow_and_reviews(
     transition_response = client.post(
         f"/api/v1/options/{option_id}/workflow/transition",
         json={"to_status": "in_review", "changed_by": user_id},
+        headers=auth_headers,
     )
     assert transition_response.status_code == 200, transition_response.text
     option_detail = transition_response.json()
@@ -166,6 +191,7 @@ def test_option_workflow_and_reviews(
     review_response = client.post(
         f"/api/v1/options/{option_id}/reviews",
         json=review_payload,
+        headers=auth_headers,
     )
     assert review_response.status_code == 201, review_response.text
     option_detail = review_response.json()
@@ -175,6 +201,7 @@ def test_option_workflow_and_reviews(
     approve_response = client.post(
         f"/api/v1/options/{option_id}/workflow/transition",
         json={"to_status": "approved", "changed_by": user_id},
+        headers=auth_headers,
     )
     assert approve_response.status_code == 200, approve_response.text
     option_detail = approve_response.json()
@@ -185,7 +212,7 @@ def test_option_workflow_and_reviews(
     assert any(item["criterion_id"] == criterion["id"] for item in latest_version["assessments"])
     assert latest_version["evidences"], "根拠が1件以上含まれていること"
 
-    history_list_response = client.get("/api/v1/history")
+    history_list_response = client.get("/api/v1/history", headers=auth_headers)
     assert history_list_response.status_code == 200
     history_items = history_list_response.json()
     assert any(item.get("linkedOptionId") == option_id for item in history_items)

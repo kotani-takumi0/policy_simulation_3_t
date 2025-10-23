@@ -1,7 +1,7 @@
 .PHONY: dev db_upgrade db_revision db_downgrade test
 
 dev:
-	uvicorn backend.app.main:app --reload
+	PYTHONPATH=.. uvicorn backend.app.main:app --reload
 
 db_upgrade:
 	alembic upgrade head

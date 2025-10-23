@@ -10,6 +10,7 @@ class PolicyBudgetSimulator {
                 : () => fallbackBaseUrl;
         const resolvedBaseUrl = resolveBaseUrl() || fallbackBaseUrl;
 
+        this.authManager = typeof AuthManager === "function" ? new AuthManager(resolvedBaseUrl) : null;
         this.currentInput = null;
         this.similarProjects = [];
         this.latestAnalysis = null;
@@ -17,10 +18,13 @@ class PolicyBudgetSimulator {
         // バックエンドのベースURL（分析・保存・ケース管理を統合）
         this.apiBaseUrl = resolvedBaseUrl;
         this.newApiBaseUrl = resolvedBaseUrl;
+        if (this.authManager) {
+            this.authManager.setApiBaseUrl(this.apiBaseUrl);
+        }
         console.info(`[app] Using API base URL: ${this.apiBaseUrl}`);
-        // デモ用に Org/User を固定する（本番はログイン情報から取得）
-        this.defaultOrgId = 1; // 必要に応じて変更
-        this.defaultUserId = null; // 未ログイン環境では null のまま
+        // ログイン後に付与される組織・ユーザーID
+        this.defaultOrgId = null;
+        this.defaultUserId = null;
         this.budgetInsights = null;
         this.serverEstimatedBudget = null;
         this.proposedBudget = null;
@@ -41,6 +45,9 @@ class PolicyBudgetSimulator {
 
     init() {
         this.bindEvents();
+        if (this.authManager) {
+            this.initializeAuthState();
+        }
         this.renderProjectsList();
         this.updateAnalysisSummary();
         this.updateKpiSection();
@@ -165,6 +172,291 @@ class PolicyBudgetSimulator {
                 this.closeModal();
             }
         });
+
+        this.loginModalBackdrop = document.getElementById('loginModalBackdrop');
+        this.loginForm = document.getElementById('loginForm');
+        this.loginBtn = document.getElementById('loginBtn');
+        this.logoutBtn = document.getElementById('logoutBtn');
+        this.registerBtn = document.getElementById('registerBtn');
+        this.loginStatusLabel = document.getElementById('loginStatus');
+        this.loginModalCloseBtn = document.getElementById('loginModalClose');
+        this.registerModalBackdrop = document.getElementById('registerModalBackdrop');
+        this.registerModalCloseBtn = document.getElementById('registerModalClose');
+        this.registerForm = document.getElementById('registerForm');
+        this.openRegisterModalBtn = document.getElementById('openRegisterModalBtn');
+        this.openLoginModalBtn = document.getElementById('openLoginModalBtn');
+
+        if (this.authManager && this.loginBtn) {
+            this.loginBtn.addEventListener('click', () => {
+                this.openLoginModal();
+            });
+        }
+
+        if (this.authManager && this.logoutBtn) {
+            this.logoutBtn.addEventListener('click', () => {
+                this.handleLogout();
+            });
+        }
+
+        if (this.authManager && this.registerBtn) {
+            this.registerBtn.addEventListener('click', () => {
+                this.openRegisterModal();
+            });
+        }
+
+        if (this.loginModalCloseBtn) {
+            this.loginModalCloseBtn.addEventListener('click', () => {
+                this.closeLoginModal();
+            });
+        }
+
+        if (this.loginModalBackdrop) {
+            this.loginModalBackdrop.addEventListener('click', (event) => {
+                if (event.target === this.loginModalBackdrop) {
+                    this.closeLoginModal();
+                }
+            });
+        }
+
+        if (this.registerModalCloseBtn) {
+            this.registerModalCloseBtn.addEventListener('click', () => {
+                this.closeRegisterModal();
+            });
+        }
+
+        if (this.openRegisterModalBtn) {
+            this.openRegisterModalBtn.addEventListener('click', () => {
+                this.closeLoginModal();
+                this.openRegisterModal();
+            });
+        }
+
+        if (this.openLoginModalBtn) {
+            this.openLoginModalBtn.addEventListener('click', () => {
+                this.closeRegisterModal();
+                this.openLoginModal();
+            });
+        }
+
+        if (this.registerModalBackdrop) {
+            this.registerModalBackdrop.addEventListener('click', (event) => {
+                if (event.target === this.registerModalBackdrop) {
+                    this.closeRegisterModal();
+                }
+            });
+        }
+
+        if (this.authManager && this.registerForm) {
+            this.registerForm.addEventListener('submit', (event) => {
+                event.preventDefault();
+                this.handleRegisterSubmit();
+            });
+        }
+
+        if (this.authManager && this.loginForm) {
+            this.loginForm.addEventListener('submit', (event) => {
+                event.preventDefault();
+                this.handleLoginSubmit();
+            });
+        }
+
+        if (this.authManager) {
+            window.addEventListener('auth:change', (event) => {
+                const detail = event.detail || {};
+                this.applyAuthState(detail.user || null);
+            });
+        }
+    }
+
+    async initializeAuthState() {
+        if (!this.authManager) {
+            return;
+        }
+        try {
+            const user = await this.authManager.fetchCurrentUser();
+            this.applyAuthState(user);
+        } catch (error) {
+            console.warn("[auth] Failed to initialize auth state", error);
+            this.applyAuthState(null);
+        }
+    }
+
+    applyAuthState(user) {
+        if (user && Number.isInteger(user.org_id)) {
+            this.defaultOrgId = user.org_id;
+            this.defaultUserId = user.id;
+            if (this.loginStatusLabel) {
+                this.loginStatusLabel.textContent = `${user.email} (${user.role})`;
+            }
+            if (this.loginBtn) {
+                this.loginBtn.style.display = "none";
+            }
+            if (this.registerBtn) {
+                this.registerBtn.style.display = "none";
+            }
+            if (this.logoutBtn) {
+                this.logoutBtn.style.display = "inline-flex";
+            }
+        } else {
+            this.defaultOrgId = null;
+            this.defaultUserId = null;
+            if (this.loginStatusLabel) {
+                this.loginStatusLabel.textContent = "未ログイン";
+            }
+            if (this.loginBtn) {
+                this.loginBtn.style.display = "inline-flex";
+            }
+            if (this.registerBtn) {
+                this.registerBtn.style.display = "inline-flex";
+            }
+            if (this.logoutBtn) {
+                this.logoutBtn.style.display = "none";
+            }
+        }
+    }
+
+    openLoginModal() {
+        if (!this.loginModalBackdrop) {
+            return;
+        }
+        this.closeRegisterModal();
+        this.loginModalBackdrop.classList.remove('hidden');
+        this.loginModalBackdrop.setAttribute('aria-hidden', 'false');
+        const emailInput = document.getElementById('loginEmail');
+        if (emailInput) {
+            setTimeout(() => emailInput.focus(), 50);
+        }
+    }
+
+    closeLoginModal() {
+        if (!this.loginModalBackdrop) {
+            return;
+        }
+        this.loginModalBackdrop.classList.add('hidden');
+        this.loginModalBackdrop.setAttribute('aria-hidden', 'true');
+        if (this.loginForm) {
+            this.loginForm.reset();
+        }
+    }
+
+    openRegisterModal() {
+        if (!this.registerModalBackdrop) {
+            return;
+        }
+        this.closeLoginModal();
+        this.registerModalBackdrop.classList.remove('hidden');
+        this.registerModalBackdrop.setAttribute('aria-hidden', 'false');
+        const orgInput = document.getElementById('registerOrg');
+        if (orgInput) {
+            setTimeout(() => orgInput.focus(), 50);
+        }
+    }
+
+    closeRegisterModal() {
+        if (!this.registerModalBackdrop) {
+            return;
+        }
+        this.registerModalBackdrop.classList.add('hidden');
+        this.registerModalBackdrop.setAttribute('aria-hidden', 'true');
+        if (this.registerForm) {
+            this.registerForm.reset();
+        }
+    }
+
+    async handleLoginSubmit() {
+        if (!this.authManager || !this.loginForm) {
+            return;
+        }
+        const formData = new FormData(this.loginForm);
+        const email = String(formData.get('email') || '').trim();
+        const password = String(formData.get('password') || '');
+        if (!email || !password) {
+            this.showToast('メールアドレスとパスワードを入力してください', 'error');
+            return;
+        }
+        try {
+            const user = await this.authManager.login(email, password);
+            this.applyAuthState(user);
+            this.showToast('ログインしました', 'success');
+            this.closeLoginModal();
+        } catch (error) {
+            console.error('[auth] login error', error);
+            this.showToast('ログインに失敗しました。入力内容をご確認ください。', 'error');
+        }
+    }
+
+    async handleRegisterSubmit() {
+        if (!this.authManager || !this.registerForm) {
+            return;
+        }
+        const formData = new FormData(this.registerForm);
+        const orgName = String(formData.get('org_name') || '').trim();
+        const email = String(formData.get('email') || '').trim();
+        const password = String(formData.get('password') || '');
+        const passwordConfirm = String(formData.get('passwordConfirm') || '');
+        const role = String(formData.get('role') || 'analyst');
+
+        if (!orgName || !email || !password || !passwordConfirm) {
+            this.showToast('すべての項目を入力してください', 'error');
+            return;
+        }
+
+        if (password !== passwordConfirm) {
+            this.showToast('パスワードが一致しません', 'error');
+            return;
+        }
+
+        const payload = {
+            org_name: orgName,
+            email,
+            password,
+            role,
+        };
+
+        try {
+            const user = await this.authManager.register(payload);
+            this.applyAuthState(user);
+            this.showToast('アカウントを作成しログインしました', 'success');
+            this.closeRegisterModal();
+        } catch (error) {
+            console.error('[auth] register error', error);
+            let message = '登録に失敗しました。入力内容をご確認ください。';
+            if (error instanceof Error && error.message) {
+                try {
+                    const parsed = JSON.parse(error.message);
+                    if (parsed && parsed.detail) {
+                        message = `登録に失敗しました: ${parsed.detail}`;
+                    } else {
+                        message = `登録に失敗しました: ${error.message}`;
+                    }
+                } catch (parseError) {
+                    message = `登録に失敗しました: ${error.message}`;
+                }
+            }
+            this.showToast(message, 'error');
+        }
+    }
+
+    handleLogout() {
+        if (!this.authManager) {
+            return;
+        }
+        this.authManager.logout();
+        this.applyAuthState(null);
+        this.showToast('ログアウトしました', 'info');
+    }
+
+    async authFetch(url, options = {}) {
+        if (!this.authManager) {
+            return fetch(url, options);
+        }
+        const response = await this.authManager.authorizedFetch(url, options);
+        if (response.status === 401) {
+            this.showToast('ログインが必要です', 'error');
+            this.openLoginModal();
+            throw new Error('Unauthorized');
+        }
+        return response;
     }
 
     // ===== 新API 連携（ケース/案/版） =====
@@ -174,7 +466,7 @@ class PolicyBudgetSimulator {
             return;
         }
         if (!Number.isInteger(this.defaultOrgId)) {
-            this.showToast('Org ID が未設定です（frontend/script.js 内 defaultOrgId）', 'error');
+            this.showToast('Org ID が未設定です。ログインしてください。', 'error');
             return;
         }
 
@@ -187,7 +479,7 @@ class PolicyBudgetSimulator {
                 visibility: 'org',
                 created_by: this.defaultUserId,
             };
-            const caseRes = await fetch(`${this.newApiBaseUrl}/api/v1/cases`, {
+            const caseRes = await this.authFetch(`${this.newApiBaseUrl}/api/v1/cases`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(casePayload),
@@ -223,7 +515,7 @@ class PolicyBudgetSimulator {
                 visibility: 'org',
                 analysis_history_id: this.latestAnalysis?.history_id || null,
             };
-            const optRes = await fetch(`${this.newApiBaseUrl}/api/v1/options`, {
+            const optRes = await this.authFetch(`${this.newApiBaseUrl}/api/v1/options`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(optionPayload),
@@ -391,7 +683,7 @@ class PolicyBudgetSimulator {
         analyzeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 分析中...';
 
         try {
-            const response = await fetch(`${this.apiBaseUrl}/api/v1/analyses`, {
+            const response = await this.authFetch(`${this.apiBaseUrl}/api/v1/analyses`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -866,7 +1158,7 @@ class PolicyBudgetSimulator {
         };
 
         try {
-            const response = await fetch(`${this.apiBaseUrl}/api/v1/save_analysis`, {
+            const response = await this.authFetch(`${this.apiBaseUrl}/api/v1/save_analysis`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1061,7 +1353,7 @@ class PolicyBudgetSimulator {
 
     async fetchAndDisplayOption(optionId) {
         try {
-            const response = await fetch(`${this.apiBaseUrl}/api/v1/options/${optionId}`);
+            const response = await this.authFetch(`${this.apiBaseUrl}/api/v1/options/${optionId}`);
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
                 throw new Error(errorData.detail || '案の取得に失敗しました');
@@ -1112,7 +1404,7 @@ class PolicyBudgetSimulator {
         };
 
         try {
-            const response = await fetch(`${this.apiBaseUrl}/api/v1/options/${this.currentOptionId}/workflow/transition`, {
+            const response = await this.authFetch(`${this.apiBaseUrl}/api/v1/options/${this.currentOptionId}/workflow/transition`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
@@ -1151,7 +1443,7 @@ class PolicyBudgetSimulator {
         };
 
         try {
-            const response = await fetch(`${this.apiBaseUrl}/api/v1/options/${this.currentOptionId}/reviews`, {
+            const response = await this.authFetch(`${this.apiBaseUrl}/api/v1/options/${this.currentOptionId}/reviews`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
@@ -1197,7 +1489,7 @@ class PolicyBudgetSimulator {
         }
 
         try {
-            const response = await fetch(`${this.apiBaseUrl}/api/v1/options/${this.currentOptionId}/versions/${this.currentOptionVersionId}/evidence`, {
+            const response = await this.authFetch(`${this.apiBaseUrl}/api/v1/options/${this.currentOptionId}/versions/${this.currentOptionVersionId}/evidence`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
@@ -1243,7 +1535,7 @@ class PolicyBudgetSimulator {
         };
 
         try {
-            const response = await fetch(`${this.apiBaseUrl}/api/v1/cases/${this.currentCaseId}/criteria`, {
+            const response = await this.authFetch(`${this.apiBaseUrl}/api/v1/cases/${this.currentCaseId}/criteria`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
@@ -1268,7 +1560,7 @@ class PolicyBudgetSimulator {
 
     async loadCriteria(caseId) {
         try {
-            const response = await fetch(`${this.apiBaseUrl}/api/v1/cases/${caseId}/criteria`);
+            const response = await this.authFetch(`${this.apiBaseUrl}/api/v1/cases/${caseId}/criteria`);
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
                 throw new Error(errorData.detail || response.statusText);
@@ -1350,7 +1642,7 @@ class PolicyBudgetSimulator {
         };
 
         try {
-            const response = await fetch(`${this.apiBaseUrl}/api/v1/options/${this.currentOptionId}/versions/${this.currentOptionVersionId}/assessments`, {
+            const response = await this.authFetch(`${this.apiBaseUrl}/api/v1/options/${this.currentOptionId}/versions/${this.currentOptionVersionId}/assessments`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),

@@ -14,13 +14,14 @@ from sqlalchemy.orm import Session
 
 from backend import semantic_search
 from backend.app.db.deps import get_db
-from backend.app.db.models import AnalysisHistory
+from backend.app.db.models import AnalysisHistory, User
 from backend.app.schemas.analyses import (
     AnalysisRequest,
     AnalysisResponse,
     HistoryItemResponse,
     SaveAnalysisRequest,
 )
+from backend.app.utils.deps_auth import get_current_user
 
 try:
     from dotenv import load_dotenv
@@ -103,7 +104,11 @@ def _serialize_history(item: AnalysisHistory) -> HistoryItemResponse:
 
 
 @router.post("/analyses", response_model=AnalysisResponse)
-def create_analysis(payload: AnalysisRequest, db: Session = Depends(get_db)) -> AnalysisResponse:
+def create_analysis(
+    payload: AnalysisRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> AnalysisResponse:
     client = _get_openai_client()
     try:
         query_vec_overview = _compute_embedding(client, payload.projectOverview)
@@ -141,7 +146,11 @@ def create_analysis(payload: AnalysisRequest, db: Session = Depends(get_db)) -> 
 
 
 @router.post("/save_analysis", response_model=dict)
-def save_analysis(payload: SaveAnalysisRequest, db: Session = Depends(get_db)) -> dict[str, int]:
+def save_analysis(
+    payload: SaveAnalysisRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, int]:
     references = payload.references or []
     history_id = _store_history(
         db,
@@ -156,7 +165,11 @@ def save_analysis(payload: SaveAnalysisRequest, db: Session = Depends(get_db)) -
 
 
 @router.get("/history", response_model=list[HistoryItemResponse])
-def list_history(limit: int = 100, db: Session = Depends(get_db)) -> list[HistoryItemResponse]:
+def list_history(
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[HistoryItemResponse]:
     stmt = (
         select(AnalysisHistory)
         .order_by(AnalysisHistory.id.desc())
@@ -167,7 +180,11 @@ def list_history(limit: int = 100, db: Session = Depends(get_db)) -> list[Histor
 
 
 @router.delete("/history/{history_id}", response_model=dict)
-def delete_history(history_id: int, db: Session = Depends(get_db)) -> dict[str, str]:
+def delete_history(
+    history_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, str]:
     history = db.get(AnalysisHistory, history_id)
     if history is None:
         raise HTTPException(status_code=404, detail="指定されたログは存在しません")

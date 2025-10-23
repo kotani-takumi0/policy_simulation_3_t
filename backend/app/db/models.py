@@ -10,6 +10,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Boolean,
     Text,
     UniqueConstraint,
     text,
@@ -55,6 +56,11 @@ class User(Base):
     org_id: Mapped[int] = mapped_column(ForeignKey("orgs.id"), nullable=False)
     email: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     role: Mapped[str] = mapped_column(Text, nullable=False)
+    password_hash: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("1"))
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=UTC_NOW
     )

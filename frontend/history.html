@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="styles.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script defer src="config.js?v=20241024"></script>
+    <script defer src="auth.js?v=20241024"></script>
     <script defer src="history.js?v=20241024"></script>
 </head>
 <body>
@@ -23,6 +24,15 @@
                 <button class="btn btn-secondary" id="backBtn">
                     <i class="fas fa-arrow-left"></i> 分析画面へ戻る
                 </button>
+                <div class="auth-controls">
+                    <span class="user-label" id="loginStatus">未ログイン</span>
+                    <button class="btn btn-outline" id="loginBtn">
+                        <i class="fas fa-user"></i> ログイン
+                    </button>
+                    <button class="btn btn-secondary" id="logoutBtn" style="display: none;">
+                        <i class="fas fa-right-from-bracket"></i> ログアウト
+                    </button>
+                </div>
             </div>
         </div>
     </header>
@@ -45,5 +55,34 @@
     </main>
 
     <div class="toast" id="toast"></div>
+
+    <div class="modal-backdrop hidden" id="loginModalBackdrop" aria-hidden="true">
+        <div class="modal-window" role="dialog" aria-modal="true" aria-labelledby="loginModalTitle">
+            <button class="modal-close" id="loginModalClose" aria-label="閉じる">
+                <i class="fas fa-times"></i>
+            </button>
+            <h2 class="modal-title" id="loginModalTitle">
+                <i class="fas fa-user-circle"></i>
+                ログイン
+            </h2>
+            <form id="loginForm" class="modal-form">
+                <div class="form-group">
+                    <label for="loginEmail">メールアドレス</label>
+                    <input type="email" id="loginEmail" name="email" required placeholder="user@example.com">
+                </div>
+                <div class="form-group">
+                    <label for="loginPassword">パスワード</label>
+                    <input type="password" id="loginPassword" name="password" required minlength="8" placeholder="********">
+                </div>
+                <button type="submit" class="btn btn-primary btn-large">
+                    <i class="fas fa-sign-in-alt"></i>
+                    ログイン
+                </button>
+            </form>
+            <p class="modal-note">
+                初回利用時は管理者にユーザー登録（組織名・メールアドレス）の設定を依頼してください。
+            </p>
+        </div>
+    </div>
 </body>
 </html>

@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend import semantic_search
+from backend.app.api.routers.auth import router as auth_router
 from backend.app.api.routers.analyses import router as analyses_router
 from backend.app.api.routers.cases import router as cases_router
 from backend.app.api.routers.decisions import router as decisions_router
@@ -28,6 +29,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router)
 app.include_router(decisions_router)
 app.include_router(cases_router)
 app.include_router(options_router)

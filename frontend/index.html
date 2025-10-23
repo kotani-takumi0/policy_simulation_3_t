@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>政策立案予算シミュレーションアプリ</title>
-    <link rel="stylesheet" href="styles.css?v=20241022">
+    <link rel="stylesheet" href="styles.css?v=20241025">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -31,6 +31,18 @@
                 <button class="btn btn-primary" id="exportBtn">
                     <i class="fas fa-download"></i> データ出力
                 </button>
+                <div class="auth-controls">
+                    <span class="user-label" id="loginStatus">未ログイン</span>
+                    <button class="btn btn-outline" id="registerBtn">
+                        <i class="fas fa-user-plus"></i> 新規登録
+                    </button>
+                    <button class="btn btn-outline" id="loginBtn">
+                        <i class="fas fa-user"></i> ログイン
+                    </button>
+                    <button class="btn btn-secondary" id="logoutBtn" style="display: none;">
+                        <i class="fas fa-right-from-bracket"></i> ログアウト
+                    </button>
+                </div>
             </div>
         </div>
     </header>
@@ -337,10 +349,92 @@
         </div>
     </div>
 
+    <!-- ログインモーダル -->
+    <div class="modal-backdrop hidden" id="loginModalBackdrop" aria-hidden="true">
+        <div class="modal-window" role="dialog" aria-modal="true" aria-labelledby="loginModalTitle">
+            <button class="modal-close" id="loginModalClose" aria-label="閉じる">
+                <i class="fas fa-times"></i>
+            </button>
+            <h2 class="modal-title" id="loginModalTitle">
+                <i class="fas fa-user-circle"></i>
+                ログイン
+            </h2>
+            <form id="loginForm" class="modal-form">
+                <div class="form-group">
+                    <label for="loginEmail">メールアドレス</label>
+                    <input type="email" id="loginEmail" name="email" required placeholder="user@example.com">
+                </div>
+                <div class="form-group">
+                    <label for="loginPassword">パスワード</label>
+                    <input type="password" id="loginPassword" name="password" required minlength="8" placeholder="********">
+                </div>
+                <button type="submit" class="btn btn-primary btn-large">
+                    <i class="fas fa-sign-in-alt"></i>
+                    ログイン
+                </button>
+            </form>
+            <p class="modal-note">
+                初回利用時は管理者にユーザー登録（組織名・メールアドレス）の設定を依頼してください。
+            </p>
+            <div class="modal-switch">
+                <span>アカウントをお持ちでない場合</span>
+                <button type="button" class="modal-link" id="openRegisterModalBtn">新規登録はこちら</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 新規登録モーダル -->
+    <div class="modal-backdrop hidden" id="registerModalBackdrop" aria-hidden="true">
+        <div class="modal-window" role="dialog" aria-modal="true" aria-labelledby="registerModalTitle">
+            <button class="modal-close" id="registerModalClose" aria-label="閉じる">
+                <i class="fas fa-times"></i>
+            </button>
+            <h2 class="modal-title" id="registerModalTitle">
+                <i class="fas fa-user-plus"></i>
+                新規登録
+            </h2>
+            <form id="registerForm" class="modal-form">
+                <div class="form-group">
+                    <label for="registerOrg">組織名</label>
+                    <input type="text" id="registerOrg" name="org_name" required placeholder="例: 政策企画部">
+                </div>
+                <div class="form-group">
+                    <label for="registerEmail">メールアドレス</label>
+                    <input type="email" id="registerEmail" name="email" required placeholder="user@example.com">
+                </div>
+                <div class="form-group">
+                    <label for="registerPassword">パスワード</label>
+                    <input type="password" id="registerPassword" name="password" required minlength="8" placeholder="********">
+                </div>
+                <div class="form-group">
+                    <label for="registerPasswordConfirm">パスワード（確認）</label>
+                    <input type="password" id="registerPasswordConfirm" name="passwordConfirm" required minlength="8" placeholder="********">
+                </div>
+                <div class="form-group">
+                    <label for="registerRole">ロール</label>
+                    <select id="registerRole" name="role">
+                        <option value="analyst">アナリスト</option>
+                        <option value="viewer">ビューア</option>
+                        <option value="admin">管理者</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary btn-large">
+                    <i class="fas fa-user-check"></i>
+                    アカウントを作成
+                </button>
+            </form>
+            <div class="modal-switch">
+                <span>すでにアカウントをお持ちの場合</span>
+                <button type="button" class="modal-link" id="openLoginModalBtn">ログイン画面へ</button>
+            </div>
+        </div>
+    </div>
+
     <!-- 成功・エラーメッセージ -->
     <div class="toast" id="toast"></div>
 
-    <script src="config.js?v=20241024"></script>
-    <script src="script.js?v=20241024"></script>
+    <script src="config.js?v=20241025"></script>
+    <script src="auth.js?v=20241025"></script>
+    <script src="script.js?v=20241025"></script>
 </body>
 </html>

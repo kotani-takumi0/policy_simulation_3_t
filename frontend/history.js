@@ -28,16 +28,30 @@ class HistoryPage {
                 : () => fallbackBaseUrl;
         const resolvedBaseUrl = resolveBaseUrl() || fallbackBaseUrl;
 
+        this.authManager = typeof AuthManager === "function" ? new AuthManager(resolvedBaseUrl) : null;
         this.apiBaseUrl = resolvedBaseUrl;
+        if (this.authManager) {
+            this.authManager.setApiBaseUrl(this.apiBaseUrl);
+        }
         console.info(`[history] Using API base URL: ${this.apiBaseUrl}`);
         this.historyListEl = document.getElementById('historyList');
         this.statusEl = document.getElementById('historyStatus');
+        this.loginModalBackdrop = null;
+        this.loginForm = null;
+        this.loginBtn = null;
+        this.logoutBtn = null;
+        this.loginStatusLabel = null;
+        this.currentUser = null;
         this.init();
     }
 
     init() {
         this.bindEvents();
-        this.loadHistory();
+        if (this.authManager) {
+            this.initializeAuthState();
+        } else {
+            this.loadHistory();
+        }
     }
 
     bindEvents() {
@@ -47,12 +61,188 @@ class HistoryPage {
                 window.location.href = 'index.html';
             });
         }
+
+        this.loginModalBackdrop = document.getElementById('loginModalBackdrop');
+        this.loginForm = document.getElementById('loginForm');
+        this.loginBtn = document.getElementById('loginBtn');
+        this.logoutBtn = document.getElementById('logoutBtn');
+        this.loginStatusLabel = document.getElementById('loginStatus');
+
+        const loginModalClose = document.getElementById('loginModalClose');
+
+        if (this.authManager && this.loginBtn) {
+            this.loginBtn.addEventListener('click', () => {
+                this.openLoginModal();
+            });
+        }
+
+        if (this.authManager && this.logoutBtn) {
+            this.logoutBtn.addEventListener('click', () => {
+                this.handleLogout();
+            });
+        }
+
+        if (loginModalClose) {
+            loginModalClose.addEventListener('click', () => {
+                this.closeLoginModal();
+            });
+        }
+
+        if (this.loginModalBackdrop) {
+            this.loginModalBackdrop.addEventListener('click', (event) => {
+                if (event.target === this.loginModalBackdrop) {
+                    this.closeLoginModal();
+                }
+            });
+        }
+
+        if (this.authManager && this.loginForm) {
+            this.loginForm.addEventListener('submit', (event) => {
+                event.preventDefault();
+                this.handleLoginSubmit();
+            });
+        }
+
+        if (this.authManager) {
+            window.addEventListener('auth:change', (event) => {
+                const detail = event.detail || {};
+                this.applyAuthState(detail.user || null);
+                if (detail.user) {
+                    this.loadHistory();
+                } else {
+                    this.renderHistory([]);
+                    this.setStatus('ログインすると分析ログを表示できます');
+                }
+            });
+        }
+    }
+
+    async initializeAuthState() {
+        if (!this.authManager) {
+            return;
+        }
+        try {
+            const user = await this.authManager.fetchCurrentUser();
+            if (user) {
+                this.applyAuthState(user);
+                await this.loadHistory();
+            } else {
+                this.applyAuthState(null);
+                this.renderHistory([]);
+                this.setStatus('ログインすると分析ログを表示できます');
+            }
+        } catch (error) {
+            console.warn('[history] Failed to initialize auth', error);
+            this.applyAuthState(null);
+            this.renderHistory([]);
+            this.setStatus('ログインすると分析ログを表示できます');
+        }
+    }
+
+    applyAuthState(user) {
+        this.currentUser = user;
+        if (user) {
+            if (this.loginStatusLabel) {
+                this.loginStatusLabel.textContent = `${user.email} (${user.role})`;
+            }
+            if (this.loginBtn) {
+                this.loginBtn.style.display = 'none';
+            }
+            if (this.logoutBtn) {
+                this.logoutBtn.style.display = 'inline-flex';
+            }
+        } else {
+            if (this.loginStatusLabel) {
+                this.loginStatusLabel.textContent = '未ログイン';
+            }
+            if (this.loginBtn) {
+                this.loginBtn.style.display = 'inline-flex';
+            }
+            if (this.logoutBtn) {
+                this.logoutBtn.style.display = 'none';
+            }
+        }
+    }
+
+    openLoginModal() {
+        if (!this.loginModalBackdrop) {
+            return;
+        }
+        this.loginModalBackdrop.classList.remove('hidden');
+        this.loginModalBackdrop.setAttribute('aria-hidden', 'false');
+        const emailInput = document.getElementById('loginEmail');
+        if (emailInput) {
+            setTimeout(() => emailInput.focus(), 50);
+        }
+    }
+
+    closeLoginModal() {
+        if (!this.loginModalBackdrop) {
+            return;
+        }
+        this.loginModalBackdrop.classList.add('hidden');
+        this.loginModalBackdrop.setAttribute('aria-hidden', 'true');
+        if (this.loginForm) {
+            this.loginForm.reset();
+        }
+    }
+
+    async handleLoginSubmit() {
+        if (!this.authManager || !this.loginForm) {
+            return;
+        }
+        const formData = new FormData(this.loginForm);
+        const email = String(formData.get('email') || '').trim();
+        const password = String(formData.get('password') || '');
+        if (!email || !password) {
+            this.showToast('メールアドレスとパスワードを入力してください', 'error');
+            return;
+        }
+        try {
+            const user = await this.authManager.login(email, password);
+            this.applyAuthState(user);
+            this.showToast('ログインしました', 'success');
+            this.closeLoginModal();
+            await this.loadHistory();
+        } catch (error) {
+            console.error('[history] login error', error);
+            this.showToast('ログインに失敗しました。入力内容をご確認ください。', 'error');
+        }
+    }
+
+    handleLogout() {
+        if (!this.authManager) {
+            return;
+        }
+        this.authManager.logout();
+        this.applyAuthState(null);
+        this.renderHistory([]);
+        this.setStatus('ログインすると分析ログを表示できます');
+        this.showToast('ログアウトしました', 'info');
+    }
+
+    async authFetch(url, options = {}) {
+        if (!this.authManager) {
+            return fetch(url, options);
+        }
+        const response = await this.authManager.authorizedFetch(url, options);
+        if (response.status === 401) {
+            this.showToast('ログインが必要です', 'error');
+            this.openLoginModal();
+            throw new Error('Unauthorized');
+        }
+        return response;
     }
 
     async loadHistory() {
+        if (this.authManager && !this.currentUser) {
+            this.renderHistory([]);
+            this.setStatus('ログインすると分析ログを表示できます');
+            return;
+        }
         this.setStatus('読み込み中...');
         try {
-            const response = await fetch(`${this.apiBaseUrl}/api/v1/history`);
+            const response = await this.authFetch(`${this.apiBaseUrl}/api/v1/history`);
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
                 throw new Error(errorData.detail || response.statusText);
@@ -90,10 +280,13 @@ class HistoryPage {
         }
 
         if (!Array.isArray(items) || items.length === 0) {
+            const message = this.currentUser
+                ? '保存されたログはまだありません'
+                : 'ログインすると分析ログが表示されます';
             this.historyListEl.innerHTML = `
                 <div class="empty-state">
                     <i class="fas fa-folder-open"></i>
-                    <p>保存されたログはまだありません</p>
+                    <p>${message}</p>
                 </div>
             `;
             return;
@@ -304,8 +497,13 @@ class HistoryPage {
     }
 
     async deleteHistory(historyId, cardElement) {
+        if (this.authManager && !this.currentUser) {
+            this.showToast('ログインが必要です', 'error');
+            this.openLoginModal();
+            return;
+        }
         try {
-            const response = await fetch(`${this.apiBaseUrl}/api/v1/history/${historyId}`, {
+            const response = await this.authFetch(`${this.apiBaseUrl}/api/v1/history/${historyId}`, {
                 method: 'DELETE',
             });
 
