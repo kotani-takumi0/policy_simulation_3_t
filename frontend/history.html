@@ -48,8 +48,22 @@
                     <i class="fas fa-database"></i>
                     保存済み分析ログ
                 </h2>
-                <div id="historyStatus" class="history-status">読み込み中...</div>
-                <div id="historyList" class="history-list"></div>
+                <div class="history-split">
+                    <aside class="history-sidebar">
+                        <div id="historyStatus" class="history-status">読み込み中...</div>
+                        <ul id="historyList" class="history-items"></ul>
+                        <button id="historyLoadMoreBtn" class="btn btn-outline" style="display:none; margin-top: 8px;">
+                            もっと見る
+                        </button>
+                    </aside>
+                    <section class="history-detail">
+                        <div id="historyDetailPlaceholder" class="empty-state">
+                            <i class="fas fa-folder-open"></i>
+                            <p>左の一覧からログを選択してください</p>
+                        </div>
+                        <div id="historyDetail" style="display:none;"></div>
+                    </section>
+                </div>
             </section>
         </div>
     </main>

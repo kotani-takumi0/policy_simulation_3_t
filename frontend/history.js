@@ -36,12 +36,19 @@ class HistoryPage {
         console.info(`[history] Using API base URL: ${this.apiBaseUrl}`);
         this.historyListEl = document.getElementById('historyList');
         this.statusEl = document.getElementById('historyStatus');
+        this.detailEl = document.getElementById('historyDetail');
+        this.detailPlaceholderEl = document.getElementById('historyDetailPlaceholder');
+        this.items = [];
+        this.visibleCount = 5;
+        this.loadMoreStep = 5;
+        this.selectedId = null;
         this.loginModalBackdrop = null;
         this.loginForm = null;
         this.loginBtn = null;
         this.logoutBtn = null;
         this.loginStatusLabel = null;
         this.currentUser = null;
+        this.loadMoreBtn = null;
         this.init();
     }
 
@@ -67,6 +74,7 @@ class HistoryPage {
         this.loginBtn = document.getElementById('loginBtn');
         this.logoutBtn = document.getElementById('logoutBtn');
         this.loginStatusLabel = document.getElementById('loginStatus');
+        this.loadMoreBtn = document.getElementById('historyLoadMoreBtn');
 
         const loginModalClose = document.getElementById('loginModalClose');
 
@@ -100,6 +108,13 @@ class HistoryPage {
             this.loginForm.addEventListener('submit', (event) => {
                 event.preventDefault();
                 this.handleLoginSubmit();
+            });
+        }
+
+        if (this.loadMoreBtn) {
+            this.loadMoreBtn.addEventListener('click', () => {
+                this.visibleCount += this.loadMoreStep;
+                this.renderHistory(this.items);
             });
         }
 
@@ -249,10 +264,15 @@ class HistoryPage {
             }
 
             const historyItems = await response.json();
-            this.renderHistory(historyItems);
+            this.items = Array.isArray(historyItems) ? historyItems : [];
+            this.visibleCount = 5; // 初期表示は5件
+            this.renderHistory(this.items);
             this.setStatus('');
-            if (!historyItems.length) {
+            if (this.items.length) {
+                this.selectHistory(this.items[0].id);
+            } else {
                 this.setStatus('保存されたログはまだありません');
+                this.showDetailPlaceholder(true);
             }
         } catch (error) {
             console.error('ログの取得に失敗しました:', error);
@@ -280,68 +300,141 @@ class HistoryPage {
         }
 
         if (!Array.isArray(items) || items.length === 0) {
-            const message = this.currentUser
-                ? '保存されたログはまだありません'
-                : 'ログインすると分析ログが表示されます';
-            this.historyListEl.innerHTML = `
-                <div class="empty-state">
-                    <i class="fas fa-folder-open"></i>
-                    <p>${message}</p>
-                </div>
-            `;
+            this.historyListEl.innerHTML = '';
+            this.updateLoadMoreVisibility();
             return;
         }
 
-        this.historyListEl.innerHTML = items
-            .map((item) => this.renderHistoryCard(item))
+        const visibleItems = items.slice(0, Math.max(0, this.visibleCount || 0));
+        this.historyListEl.innerHTML = visibleItems
+            .map((item) => {
+                const title = this.sanitize(item.projectName) || '名称未設定';
+                const date = this.formatDate(item.createdAt);
+                const selected = item.id === this.selectedId ? 'is-selected' : '';
+                return `
+                    <li class="history-item ${selected}" data-id="${item.id}">
+                        <span class="title" title="${title}">${title}</span>
+                        <span class="date">${date}</span>
+                    </li>
+                `;
+            })
             .join('');
 
-        const cards = Array.from(this.historyListEl.querySelectorAll('.history-card'));
-        cards.forEach((card) => {
-            card.addEventListener('click', (event) => {
-                if (event.target.closest('a, button')) {
-                    return;
-                }
-                const wasExpanded = card.classList.contains('expanded');
-                cards.forEach((other) => other.classList.remove('expanded'));
-                if (!wasExpanded) {
-                    card.classList.add('expanded');
-                }
+        this.historyListEl.querySelectorAll('.history-item').forEach((el) => {
+            el.addEventListener('click', () => {
+                const id = Number(el.dataset.id);
+                if (Number.isFinite(id)) this.selectHistory(id);
             });
         });
 
-        this.historyListEl.querySelectorAll('.history-delete').forEach((button) => {
-            button.addEventListener('click', (event) => {
-                event.stopPropagation();
-                const card = button.closest('.history-card');
-                const historyId = Number(card?.dataset.historyId);
-                if (!historyId) {
-                    this.showToast('ログIDの取得に失敗しました', 'error');
-                    return;
-                }
-                const confirmed = window.confirm('選択したログを削除します。よろしいですか？');
-                if (!confirmed) {
-                    return;
-                }
-                this.deleteHistory(historyId, card);
-            });
-        });
+        this.updateLoadMoreVisibility();
+    }
 
-        this.historyListEl.querySelectorAll('.history-open-option').forEach((button) => {
-            button.addEventListener('click', (event) => {
-                event.stopPropagation();
-                const optionId = Number(button.dataset.optionId);
-                if (!Number.isFinite(optionId)) {
-                    this.showToast('紐づく案の情報を取得できませんでした', 'error');
-                    return;
-                }
-                window.location.href = `index.html?optionId=${optionId}`;
-            });
-        });
+    updateLoadMoreVisibility() {
+        if (!this.loadMoreBtn) return;
+        const total = Array.isArray(this.items) ? this.items.length : 0;
+        const visible = Math.max(0, this.visibleCount || 0);
+        const remaining = Math.max(0, total - visible);
+        if (remaining > 0) {
+            this.loadMoreBtn.style.display = 'inline-flex';
+            this.loadMoreBtn.textContent = `もっと見る（残り${remaining}件）`;
+        } else {
+            this.loadMoreBtn.style.display = 'none';
+        }
+    }
 
-        const firstCard = this.historyListEl.querySelector('.history-card');
-        if (firstCard) {
-            firstCard.classList.add('expanded');
+    showDetailPlaceholder(visible) {
+        if (!this.detailEl || !this.detailPlaceholderEl) return;
+        this.detailPlaceholderEl.style.display = visible ? 'block' : 'none';
+        this.detailEl.style.display = visible ? 'none' : 'block';
+        if (visible) this.detailEl.innerHTML = '';
+    }
+
+    selectHistory(id) {
+        this.selectedId = id;
+        if (this.historyListEl) {
+            this.historyListEl.querySelectorAll('.history-item').forEach((el) => {
+                el.classList.toggle('is-selected', Number(el.dataset.id) === id);
+            });
+        }
+        const item = (this.items || []).find((x) => x.id === id);
+        if (item) {
+            this.renderHistoryDetail(item);
+            this.showDetailPlaceholder(false);
+        } else {
+            this.showDetailPlaceholder(true);
+        }
+    }
+
+    renderHistoryDetail(item) {
+        if (!this.detailEl) return;
+        const projectName = this.sanitize(item.projectName) || '名称未設定';
+        const createdAt = this.formatDate(item.createdAt);
+        const currentSituation = this.formatMultiline(item.currentSituation || '---');
+        const projectOverview = this.formatMultiline(item.projectOverview || '---');
+        const initialBudget = this.formatCurrency(item.initialBudget);
+        const estimatedBudget = this.formatCurrency(item.estimatedBudget);
+        const references = Array.isArray(item.references) ? item.references : [];
+        const referenceList = references
+            .map((ref, index) => {
+                const name = this.sanitize(ref.project_name || `類似事業 ${index + 1}`);
+                const ministry = this.sanitize(ref.ministry_name || '所属不明');
+                const similarity = typeof ref.similarity === 'number' ? ref.similarity.toFixed(3) : '---';
+                const rsSystemUrl = buildRsSystemUrl(ref);
+                const rsLink = rsSystemUrl
+                    ? this.createLink(rsSystemUrl, 'RSシステム')
+                    : '<span class="link-unavailable">RSリンクなし</span>';
+                return `
+                    <li>
+                        <div class="reference-header">
+                            <span class="reference-name">${name}</span>
+                            <span class="reference-meta">類似度: ${similarity}</span>
+                        </div>
+                        <div class="reference-body">
+                            <span>府省庁: ${ministry}</span>
+                            <span>RS: ${rsLink}</span>
+                        </div>
+                    </li>
+                `;
+            })
+            .join('');
+        const linkedOptionId = Number(item.linkedOptionId);
+        const openOptionBtn = Number.isFinite(linkedOptionId) && linkedOptionId > 0
+            ? `<button class="btn btn-secondary" id="openLinkedOption"><i class="fas fa-external-link-alt"></i> 案を開く</button>`
+            : '';
+        const deleteBtn = `<button class="btn btn-outline" id="deleteHistory"><i class="fas fa-trash"></i> このログを削除</button>`;
+
+        this.detailEl.innerHTML = `
+            <header class="detail-row">
+                <h3 style="margin:0">${projectName}</h3>
+                <p class="muted">作成日時: ${createdAt}</p>
+            </header>
+            <div class="detail-row"><strong>入力当初予算:</strong><p>${initialBudget}</p></div>
+            <div class="detail-row"><strong>推定予算:</strong><p>${estimatedBudget}</p></div>
+            <div class="detail-row"><strong>現状・目的:</strong><p>${currentSituation}</p></div>
+            <div class="detail-row"><strong>事業概要:</strong><p>${projectOverview}</p></div>
+            <div class="detail-row"><strong>類似事業:</strong>${references.length ? `<ul class="reference-list">${referenceList}</ul>` : '<p>ログに類似事業情報はありません</p>'}</div>
+            <div class="detail-row" style="display:flex; gap:.5rem">${openOptionBtn}${deleteBtn}</div>
+        `;
+
+        const del = document.getElementById('deleteHistory');
+        if (del) {
+            del.addEventListener('click', async () => {
+                const ok = window.confirm('このログを削除します。よろしいですか？');
+                if (!ok) return;
+                const listItem = this.historyListEl?.querySelector(`.history-item[data-id="${item.id}"]`);
+                await this.deleteHistory(item.id, listItem?.parentElement);
+                this.items = (this.items || []).filter((x) => x.id !== item.id);
+                this.renderHistory(this.items);
+                if (this.items.length) this.selectHistory(this.items[0].id);
+                else this.showDetailPlaceholder(true);
+            });
+        }
+        const openBtn = document.getElementById('openLinkedOption');
+        if (openBtn) {
+            openBtn.addEventListener('click', () => {
+                window.location.href = `index.html?optionId=${linkedOptionId}`;
+            });
         }
     }
 

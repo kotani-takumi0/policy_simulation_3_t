@@ -308,53 +308,69 @@ a {
 .main-content {
     max-width: 1400px;
     margin: 0 auto;
-    padding: 2rem;
+    padding: 1rem; /* 画面内に収めるため縮小 */
 }
 
 /* サマリーKPIセクション */
 .summary-kpi-section {
-    margin-bottom: 2rem;
+    margin-bottom: 0.75rem; /* 縦スペースを縮小 */
 }
 
 .kpi-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 1.5rem;
+    display: flex; /* 横並び */
+    justify-content: flex-end; /* 右寄せ */
+    align-items: center;
+    gap: 0.75rem; /* 間隔を縮小 */
 }
 
 .kpi-card {
-    position: relative;
-    background: white;
-    border-radius: 12px;
-    padding: 1.5rem;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-    transition: all 0.3s ease;
-    border-left: 4px solid #667eea;
+    position: static;
+    background: transparent; /* カード表現を廃止 */
+    border-radius: 0;
+    padding: 0; /* 余白削減 */
+    box-shadow: none;
+    transition: none;
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
 }
 
 .kpi-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+    transform: none;
+    box-shadow: none;
 }
 
 .kpi-icon {
-    font-size: 2rem;
+    font-size: 1rem; /* アイコン縮小 */
     color: #667eea;
-    margin-bottom: 1rem;
+    margin: 0; /* 下マージン削除 */
 }
 
 .kpi-content h3 {
-    font-size: 0.9rem;
-    color: #666;
-    margin-bottom: 0.5rem;
+    font-size: 0.8rem; /* タイトル縮小 */
+    color: #555;
+    margin: 0; /* 行間縮小 */
     font-weight: 500;
 }
 
+.kpi-content {
+    display: inline-flex; /* ラベルと値を横並び */
+    align-items: baseline;
+    gap: 0.4rem;
+}
+
 .kpi-value {
-    font-size: 1.8rem;
+    font-size: 1.2rem; /* 数値を縮小 */
     font-weight: 700;
     color: #333;
     word-break: break-all;
+}
+
+/* 主要KPIの数値だけ少し大きめにする */
+#proposedBudgetCard .kpi-value,
+#averageBudgetCard .kpi-value {
+    font-size: 1.5rem;
 }
 
 /* 2カラムレイアウト */
@@ -933,6 +949,74 @@ a {
     gap: 0.75rem;
 }
 
+/* History split layout */
+.history-page .history-split {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 0.75rem;
+    min-height: calc(100vh - 160px);
+}
+
+.history-sidebar {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 0.5rem;
+    overflow: auto;
+}
+
+.history-status {
+    color: #6b7280;
+    font-size: 0.9rem;
+    padding: 0.25rem 0.4rem;
+}
+
+.history-items {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.history-item {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.25rem 0.5rem;
+    padding: 0.5rem 0.6rem;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.history-item:hover { background: #f8fafc; }
+.history-item.is-selected { background: #eef2ff; }
+
+.history-item .title {
+    font-weight: 600;
+    color: #1f2937;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2; /* 2行で省略 */
+    -webkit-box-orient: vertical;
+    grid-column: 1 / span 2;
+}
+.history-item .date { color: #6b7280; font-size: 0.8rem; grid-column: 1 / span 2; }
+
+.history-detail {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 1rem;
+    overflow: auto;
+}
+
+@media (max-width: 1024px) {
+    .history-page .history-split { grid-template-columns: 1fr; }
+    .history-detail { min-height: 40vh; }
+}
+
 .reference-header {
     display: flex;
     justify-content: space-between;
@@ -1140,6 +1224,12 @@ a {
     color: #2d3748;
 }
 
+/* 未保存の見た目（中立色で保存済みと誤解しない） */
+.status-unsaved {
+    background: #edf2f7; /* 灰系 */
+    color: #4a5568;
+}
+
 .status-draft {
     background: #edf2ff;
     color: #3b5bdb;
@@ -1306,6 +1396,24 @@ a {
     font-size: 0.85rem;
 }
 
+/* 計算詳細テーブル */
+.calc-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 0.5rem;
+}
+.calc-table th,
+.calc-table td {
+    padding: 0.4rem 0.5rem;
+    border-bottom: 1px solid #eaecef;
+    text-align: left;
+    font-size: 0.85rem;
+}
+.calc-table thead th {
+    color: #555;
+    font-weight: 600;
+}
+
 .data-distribution-report {
     margin-top: 1.5rem;
     background: #f8fafc;
@@ -1355,4 +1463,8 @@ a {
 .distribution-summary-text {
     margin-top: 0.75rem;
     font-size: 0.82rem;
+}
+/* 全体スケール（フォントとremベースの間隔を縮小） */
+html {
+    font-size: 14px; /* 既定16px -> 14pxに縮小 */
 }

@@ -88,18 +88,18 @@
                         <i class="fas fa-yen-sign"></i>
                     </div>
                     <div class="kpi-content">
-                        <h3>提案事業予算</h3>
-                        <p class="kpi-value" id="proposedBudgetValue">¥0</p>
+                        <h3>設定した予算</h3>
+                        <p class="kpi-value" id="proposedBudgetValue"></p>
                     </div>
                 </div>
 
-                <div class="kpi-card" id="averageBudgetCard">
+                <div class="kpi-card" id="averageBudgetCard" role="button" tabindex="0" aria-label="推定予算の計算式を表示">
                     <div class="kpi-icon">
                         <i class="fas fa-chart-bar"></i>
                     </div>
                     <div class="kpi-content">
-                        <h3>類似事業推定予算</h3>
-                        <p class="kpi-value" id="averageBudgetValue">¥0</p>
+                        <h3>推定した予算</h3>
+                        <p class="kpi-value" id="averageBudgetValue"></p>
                     </div>
                 </div>
 
@@ -186,13 +186,10 @@
                     <!-- タブ機能 -->
                     <div class="tabs">
                         <button class="tab-btn active" data-tab="all">
-                            <i class="fas fa-list"></i> すべて
+                            <i class="fas fa-list"></i> RSシステム
                         </button>
                         <button class="tab-btn" data-tab="high-rated">
-                            <i class="fas fa-star"></i> 高評価事業
-                        </button>
-                        <button class="tab-btn" data-tab="needs-improvement">
-                            <i class="fas fa-exclamation-triangle"></i> 要改善事業
+                            <i class="fas fa-star"></i> チーム案
                         </button>
                     </div>
                     
@@ -204,28 +201,6 @@
                         </div>
                     </div>
                     
-                    <!-- 分析サマリー -->
-                    <div class="data-analysis-report">
-                        <h3>データ分析レポート</h3>
-                        <div class="report-placeholder" id="analysisSummary">
-                            <i class="fas fa-chart-area"></i>
-                            <p>分析を実行すると、入力内容と類似事業のサマリーが表示されます</p>
-                        </div>
-                    </div>
-
-                    <div class="data-distribution-report">
-                        <h3>予算分布の概要（上位50件・加重箱ひげ）</h3>
-                        <div class="distribution-container">
-                            <canvas id="budgetDistributionCanvas"></canvas>
-                            <div id="distributionPlaceholder" class="distribution-placeholder">
-                                <i class="fas fa-chart-bar"></i>
-                                <p>分析を実行すると、類似事業の予算分布がここに表示されます</p>
-                            </div>
-                        </div>
-                        <p id="distributionSummary" class="muted distribution-summary-text">
-                            有効な類似事業が少ないため、分布をまだプロットできません。
-                        </p>
-                    </div>
                 </div>
             </section>
         </div>
@@ -371,6 +346,21 @@
             </div>
             <div class="modal-body" id="modalBody">
                 <!-- モーダルの内容はJavaScriptで動的に生成 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 推定予算の計算詳細モーダル -->
+    <div class="modal" id="estimationModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>推定予算の算出方法</h3>
+                <button class="modal-close" id="estimationModalClose" aria-label="閉じる">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body" id="estimationModalBody">
+                <!-- JavaScriptで動的に挿入 -->
             </div>
         </div>
     </div>
