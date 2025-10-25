@@ -6,6 +6,56 @@
 - SQLite の接続先は `.env` の `DATABASE_URL` で指定します。未設定の場合は `sqlite:///./app.db` を利用します。
 - フェーズ1で `PolicyCase` / `Option` / `OptionVersion` / `Tag` / `DecisionTag` に加え、分析系エンドポイント（`/api/v1/analyses` など）も新バックエンドに統合されました。
 
+## アーキテクチャ
+```mermaid
+flowchart LR
+  subgraph Client[Frontend]
+    A[index.html/script.js]
+    H[history.html/history.js]
+    Cfg[config.js]
+  end
+
+  subgraph API[FastAPI (backend/app)]
+    R1[/auth router\n/api/v1/auth/*/]
+    R2[/analyses router\n/api/v1/analyses, /save_analysis, /history/]
+    R3[/cases/options router\n/api/v1/cases, /options/]
+    R4[/decisions router\n/api/v1/decisions]
+  end
+
+  subgraph Core[Core / Utils]
+    SEC[JWT, Password Hashing]
+    SEM[semantic_search.py]
+  end
+
+  subgraph Data[Storage]
+    DB[(SQLite via SQLAlchemy)]
+    MIG[Alembic Migrations]
+    PARQ[[final.parquet (embeddings)]]
+  end
+
+  A -- REST/JSON --> R1
+  A -- REST/JSON --> R2
+  H -- REST/JSON --> R2
+  A -- REST/JSON --> R3
+  A -- REST/JSON --> R4
+  Cfg -- base URL/override --> A
+  Cfg -- base URL/override --> H
+
+  R1 <--> SEC
+  R2 --> SEM
+  R2 <--> DB
+  R3 <--> DB
+  R4 <--> DB
+  SEM --> PARQ
+  MIG --> DB
+```
+
+データフロー要約
+- フロントは `config.js` で API ベース URL を解決し、FastAPI に REST でアクセスします。
+- 認証は `/api/v1/auth/*` で JWT を払い出し、以降の API は `Authorization: Bearer` を使用します。
+- 分析は OpenAI Embeddings を利用し、`semantic_search.py` が `final.parquet` のベクトルと照合します。
+- 履歴やケース/案は SQLAlchemy 経由で SQLite に保存し、Alembic によりスキーマ管理します。
+
 ## セットアップ
 ```bash
 python3 -m venv .venv
